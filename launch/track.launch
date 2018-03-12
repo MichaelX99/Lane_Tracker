@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+
+    <node pkg="lane_tracker" type="Tracker.py" name="lane_tracker" output="screen" cwd="node"/>
+
+</launch>

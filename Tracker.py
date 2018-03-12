@@ -1,68 +1,133 @@
-import tensorflow as tf
+#!/usr/bin/env python
+import rospy
+from std_msgs.msg import Float32
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 import numpy as np
+from Particle_Class import Particle
+#from Vision_System import Vision_System
 
 class Tracker(object):
-    def __init__(self, N = 10000, path = None):
-        self.Form_Transition(N)
+    """
+    Class to perform detection and tracking of lanes
+    """
+    def __init__(self, n_particles = 100, n_states = 10000, path = None):
+        rospy.init_node('Lane_Tracker')
+
+        np.set_printoptions(precision=3) # For printing purposes
+
+        # Make sure the number of states is even
+        try:
+            assert n_states % 2 == 0
+        except:
+            print("The number of states needs to be divisible by 2")
+            exit()
+
+        # Set up the probabalistic model
+        self.n_particles = n_particles
+        self.n_states = n_states
+        self.mid = self.n_states // 2
+        self.Initialize_Transition_Model()
+        self.Initialize_Sensor_Model()
+        self.Current_State = np.zeros(n_states)
+
+        self.particles = []
+        for _ in range(n_particles):
+            self.particles.append(Particle(n_states))
+
+        self.Compute_Current_State()
 
         if path is not None:
-            self.Load_Segmentation_Model(path)
+            self.vision_system = Vision_System(path)
+        else:
+            print("Please enter a valid path to a frozen Tensorflow model")
+            #exit()
 
-        self.sess = tf.Session()
+        # Initialize ROS subscribers and publishers
+        self.bridge = CvBridge()
+        sub = rospy.Subscriber('/roadway/image', Image, self.Apply_Evidence)
+        self.pub = rospy.Publisher('/roadway/estimated_state', Float32, queue_size=1)
 
-    def Compute_Evidence(self):
-        pass
+        rospy.spin()
 
-    def Apply_Transition(self):
-        pass
+    def Apply_Evidence(self, msg):
+        """
+        Input: ROS msg of an image of the road
+        Output: N/A
+        Purpose: Takes an image, computes the observed state of the lane, and applies it to the current assumed state of the lane
+        """
+        img = self.bridge.imgmsg_to_cv2(msg.data, "bgr8")
 
-    def Apply_Evidence(self):
-        pass
+        #Observed_State = self.Vision_System.Compute_Observed_State(img)
+        #self.Reweight_Particles(Observed_State)
+
+    def Reweight_Particles(self, Observed_State):
+        """
+        Input: The observed state of the lane
+        Output: N/A
+        Purpose: Reweight all particles given the observed evidence
+        """
+        Sensor_Model = self.Compute_Sensor_Model(Observed_State)
+        for i in range(len(self.particles)):
+            self.particles[i].Apply_Model(Sensor_Model)
 
     def Resample_Particles(self):
+        """
+        Input: N/A
+        Output: N/A
+        Purpose: Resample particles after being weighted according to the observed evidence
+        """
         pass
 
-    def Compute_Curvate(self, img):
-        pass
+    def Compute_Current_State(self):
+        Current_State = np.zeros(n_states)
+        for particle in self.particles:
+            Current_State = np.add(Current_State, particle.Current_State)
 
-    def Segment_Image(self, img):
-        img_shape = (160, 576)
-        img = scipy.misc.imresize(img, img_shape)
-
-        im_softmax = self.sess.run([self.segment_op], {self.keep_prob: 1.0, self.input_tensor: [img]})
-
-        im_softmax = im_softmax[0][:, 1].reshape(img_shape[0], img_shape[1])
-        segmentation = (im_softmax > 0.5).reshape(img_shape[0], img_shape[1], 1)
-        mask = np.dot(segmentation, np.array([[0, 255, 0, 127]]))
-        mask = scipy.misc.toimage(mask, mode="RGBA")
-        #street_im = scipy.misc.toimage(img)
-        #street_im.paste(mask, box=None, mask=mask)
-
-        #return np.array(street_im)
-        return mask
-
-    def Load_Segmentation_Model(self, path):
-        segmentation_graph = tf.Graph()
-        with segmentation_graph.as_default():
-            seg_graph_def = tf.GraphDef()
-            with tf.gfile.GFile(path, 'rb') as fid:
-                serialized_graph = fid.read()
-                seg_graph_def.ParseFromString(serialized_graph)
-                tf.import_graph_def(seg_graph_def, name='')
+        s = np.sum(Current_State)
+        self.Current_State = Current_State  /s
 
 
-            self.input_tensor = tf.get_default_graph().get_tensor_by_name('input_image:0')
-            self.keep_prob = tf.get_default_graph().get_tensor_by_name("keep_prob:0")
-            self.logits = tf.get_default_graph().get_tensor_by_name('logits:0')
+    def Compute_Sensor_Model(self, Observed_State):
+        """
+        Input: Observed lane state of detected lane
+        Output: Sensor Model matrix
+        Purpose: Form the Sensor Model matrix in order to apply the observed evidence to the current state
+        """
+        Sensor_Model = self.Sensor_Model
 
-            self.segment_op = tf.nn.softmax(self.logits)
+        return Sensor_Model
 
-    def Form_Transition(self, N = 10000):
-        self.Transition = np.zeros((N,N))
+    def norm(self, x, m, s=.5):
+        """
+        Input: Point to determine the Gaussian probability density, the mean, the standard deviation
+        Output: The Gaussian probability density
+        Purpose: Compute the Gaussian probability density with the given parameters
+        """
+        V = s**2
+        output = (1/np.sqrt(2 * 3.14 * V) * np.exp(-(x - m)**2/(2*V)))
 
-        scale = int(.1 * N)
+        return output
+
+    def Initialize_Sensor_Model(self):
+        """
+        Input: N/A
+        Output: N/A
+        Purpose: Initialize the Sensor Model for the particle filter
+        """
+        self.Sensor_Model = np.eye(self.n_states)
+
+    def Initialize_Transition_Model(self):
+        """
+        Input: N/A
+        Output: N/A
+        Purpose: Initialize the Transition Model for the particle filter
+        """
+        self.Transition_Model = np.zeros((self.n_states, self.n_states))
+
+        scale = int(.1 * self.n_states)
         index = []
-        for i in range(N):
+        for i in range(self.n_states):
             temp = []
             for j in reversed(range(scale+1)):
                 ind = i - j
@@ -70,26 +135,25 @@ class Tracker(object):
                     temp.append(ind)
             for j in range(1,scale+1,1):
                 ind = i + j
-                if ind <= (N - 1):
+                if ind <= (self.n_states - 1):
                     temp.append(ind)
             index.append(temp)
 
-        def norm(x, m, s=.5):
-            V = s**2
-            output = (1/np.sqrt(2 * 3.14 * V) * np.exp(-(x - m)**2/(2*V)))
-
-            return output
-
         for i, change in enumerate(index):
             for j in change:
-                out = norm(j, i)
-                self.Transition[i,j] = out
-            s = np.sum(self.Transition[i,:])
-            for j in range(N):
-                self.Transition[i,j] /= s
+                out = self.norm(j, i)
+                self.Transition_Model[i,j] = out
+            s = np.sum(self.Transition_Model[i,:])
+            for j in range(self.n_states):
+                self.Transition_Model[i,j] /= s
 
 
 if __name__ == '__main__':
-    N = 100
+    n_particles = 10
+    n_states = 100
+    path = None
     #path = "/home/mikep/CarND-Semantic-Segmentation/runs/graph_def.pb"
-    Track = Tracker(N, path=None)
+    try:
+        Track = Tracker(n_particles = n_particles, n_states = n_states, path = path)
+    except rospy.ROSInterruptException:
+        rospy.logerr('Could not start Tracker node.')
