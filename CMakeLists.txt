@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(lane_tracker)
 
+set (CMAKE_CXX_STANDARD 11)
+
 find_package(CUDA)
 
 ## Find catkin macros and libraries
@@ -24,11 +26,13 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-cuda_add_executable(${PROJECT_NAME}
-  src/temp.cu
+cuda_add_executable(particle_filter
+  src/Cuda_Functions.cu
+  src/Particle_Filter.cpp
+  src/main.cpp
 )
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(particle_filter
   ${CUDA_LIBRARIES}
   ${CUDA_curand_LIBRARY}
   ${CUDA_CUBLAS_LIBRARIES}
