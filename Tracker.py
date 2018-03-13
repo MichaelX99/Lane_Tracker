@@ -177,8 +177,8 @@ class Tracker(object):
         np.save(fpath, self.Transition_Model)
 
 if __name__ == '__main__':
-    n_particles = 100
-    n_states = 10000
+    n_particles = 5000
+    n_states = 3000
     path = None
     #path = "/home/mikep/CarND-Semantic-Segmentation/runs/graph_def.pb"
     try:

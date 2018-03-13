@@ -5,7 +5,11 @@
 #include <ctime>
 #include <cublas_v2.h>
 #include <curand.h>
-#include <ctime>// include this header
+//#include <ctime>// include this header
+#include <stdio.h>
+#include <cuda_runtime.h>
+#include <cuda.h>
+#include <device_launch_parameters.h>
 
 // Fill the array A(nr_rows_A, nr_cols_A) with random numbers on GPU
 void GPU_fill_rand(float *A, int nr_rows_A, int nr_cols_A) {
@@ -17,7 +21,7 @@ void GPU_fill_rand(float *A, int nr_rows_A, int nr_cols_A) {
 	curandSetPseudoRandomGeneratorSeed(prng, (unsigned long long) clock());
 
 	// Fill the array with random numbers on the device
-	curandGenerateUniform(prng, A, nr_rows_A * nr_cols_A);
+	//curandGenerateUniform(prng, A, nr_rows_A * nr_cols_A);
 }
 
 // Multiply the arrays A and B on GPU and save the result in C
@@ -33,6 +37,37 @@ void gpu_blas_mmul(const float *A, const float *B, float *C, const int m, const 
 	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
 
+static const char *_cudaGetErrorEnum(cublasStatus_t error)
+{
+    switch (error)
+    {
+        case CUBLAS_STATUS_SUCCESS:
+            return "CUBLAS_STATUS_SUCCESS";
+
+        case CUBLAS_STATUS_NOT_INITIALIZED:
+            return "CUBLAS_STATUS_NOT_INITIALIZED";
+
+        case CUBLAS_STATUS_ALLOC_FAILED:
+            return "CUBLAS_STATUS_ALLOC_FAILED";
+
+        case CUBLAS_STATUS_INVALID_VALUE:
+            return "CUBLAS_STATUS_INVALID_VALUE";
+
+        case CUBLAS_STATUS_ARCH_MISMATCH:
+            return "CUBLAS_STATUS_ARCH_MISMATCH";
+
+        case CUBLAS_STATUS_MAPPING_ERROR:
+            return "CUBLAS_STATUS_MAPPING_ERROR";
+
+        case CUBLAS_STATUS_EXECUTION_FAILED:
+            return "CUBLAS_STATUS_EXECUTION_FAILED";
+
+        case CUBLAS_STATUS_INTERNAL_ERROR:
+            return "CUBLAS_STATUS_INTERNAL_ERROR";
+    }
+
+    return "<unknown>";
+}
 
 //Print matrix A(nr_rows_A, nr_cols_A) storage in column-major format
 void print_matrix(const float *A, int nr_rows_A, int nr_cols_A) {
@@ -47,14 +82,13 @@ void print_matrix(const float *A, int nr_rows_A, int nr_cols_A) {
 }
 
 int main() {
+	cublasStatus_t stat;
+
 	// Allocate 3 arrays on CPU
 	int nr_rows_A, nr_cols_A, nr_rows_B, nr_cols_B, nr_rows_C, nr_cols_C;
 
-	// for simplicity we are going to use square arrays
-	//nr_rows_A = nr_cols_A = nr_rows_B = nr_cols_B = nr_rows_C = nr_cols_C = 2000;
-
-  int num_particles = 100;
-  int num_states = 10000;
+  int num_particles = 5000;
+  int num_states = 3000;
   nr_rows_A = nr_rows_C = num_particles;
   nr_cols_A = nr_rows_B = num_states;
   nr_cols_B = nr_cols_C = num_states;
@@ -65,45 +99,37 @@ int main() {
 
 	// Allocate 3 arrays on GPU
 	float *d_A, *d_B, *d_C;
-	cudaMalloc(&d_A,nr_rows_A * nr_cols_A * sizeof(float));
-	cudaMalloc(&d_B,nr_rows_B * nr_cols_B * sizeof(float));
-	cudaMalloc(&d_C,nr_rows_C * nr_cols_C * sizeof(float));
-
-	// If you already have useful values in A and B you can copy them in GPU:
-	// cudaMemcpy(d_A,h_A,nr_rows_A * nr_cols_A * sizeof(float),cudaMemcpyHostToDevice);
-	// cudaMemcpy(d_B,h_B,nr_rows_B * nr_cols_B * sizeof(float),cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&d_A,nr_rows_A * nr_cols_A * sizeof(float));
+	cudaMalloc((void**)&d_B,nr_rows_B * nr_cols_B * sizeof(float));
+	cudaMalloc((void**)&d_C,nr_rows_C * nr_cols_C * sizeof(float));
 
 	// Fill the arrays A and B on GPU with random numbers
 	GPU_fill_rand(d_A, nr_rows_A, nr_cols_A);
 	GPU_fill_rand(d_B, nr_rows_B, nr_cols_B);
 
-	// Optionally we can copy the data back on CPU and print the arrays
-	cudaMemcpy(h_A,d_A,nr_rows_A * nr_cols_A * sizeof(float),cudaMemcpyDeviceToHost);
-	cudaMemcpy(h_B,d_B,nr_rows_B * nr_cols_B * sizeof(float),cudaMemcpyDeviceToHost);
-	//std::cout << "A =" << std::endl;
-	//print_matrix(h_A, nr_rows_A, nr_cols_A);
-	//std::cout << "B =" << std::endl;
-	//print_matrix(h_B, nr_rows_B, nr_cols_B);
-
   // Create a handle for CUBLAS
   cublasHandle_t handle;
-  cublasCreate(&handle);
+  stat = cublasCreate(&handle);
 
-  int start_s=clock();
+	std::cout << _cudaGetErrorEnum(stat) << "\n";
+
+	if (stat != CUBLAS_STATUS_SUCCESS)
+	{
+		printf("error\n");
+		return;
+	}
+
+  int start_s = clock();
 	// Multiply A and B on GPU
 	gpu_blas_mmul(d_A, d_B, d_C, nr_rows_A, nr_cols_A, nr_cols_B, handle);
-  cudaMemcpy(h_C,d_C,nr_rows_C * nr_cols_C * sizeof(float),cudaMemcpyDeviceToHost);
-  int stop_s=clock();
+
+  //cudaMemcpy(h_C,d_C,nr_rows_C * nr_cols_C * sizeof(float),cudaMemcpyDeviceToHost);
+	int stop_s = clock();
   std::cout << "time: " << (stop_s-start_s)/double(CLOCKS_PER_SEC) << std::endl;
 
 
   // Destroy the handle
   cublasDestroy(handle);
-
-	// Copy (and print) the result on host memory
-
-	//std::cout << "C =" << std::endl;
-	//print_matrix(h_C, nr_rows_C, nr_cols_C);
 
 	//Free GPU memory
 	cudaFree(d_A);
