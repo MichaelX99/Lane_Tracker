@@ -2,10 +2,15 @@
 
 Particle_Filter::Particle_Filter()
 {
-  _nh.getParam("state_path", _state_path);
-  _nh.getParam("transform_path", _transform_path);
-  _nh.getParam("num_states", _num_states);
-  _nh.getParam("num_particles", _num_particles);
+  if(!_nh.getParam("state_path", _state_path)) { printf("State vector path parameter not found\n"); }
+  if(!_nh.getParam("transition_path", _transition_path)) { printf("Tansition matrix path parameter not found\n"); }
+  if(!_nh.getParam("num_states", _num_states)) { printf("Number of states variables not found\n"); }
+  if(!_nh.getParam("num_particles", _num_particles)) { printf("Number of particles variable not found\n"); }
+
+  // wait for the python script to generate these files
+  while ( !boost::filesystem::exists(_state_path) ) { }
+  while ( !boost::filesystem::exists(_transition_path) ) { }
+  std::cout << "Done waiting on file generation\n";
 
   cublasCreate(&_handle);
 
@@ -31,7 +36,7 @@ void Particle_Filter::img_callback(const sensor_msgs::Image& msg)
   int index = cuda_compute_argmax_state(_d_particles, _num_states, _num_particles);
 
   // Find which state the index is
-  float state;
+  float state = _states[index];
 
   std_msgs::Float32 output_msg;
   output_msg.data = state;

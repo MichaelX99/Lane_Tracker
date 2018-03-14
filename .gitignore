@@ -3,3 +3,4 @@ Data/
 .ipynb_checkpoints/
 *.pyc
 *.npy
+*.pb

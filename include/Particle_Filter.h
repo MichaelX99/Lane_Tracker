@@ -10,6 +10,8 @@
 
 #include <vector>
 
+#include <boost/filesystem.hpp>
+
 class Particle_Filter
 {
 public:
@@ -26,7 +28,7 @@ private:
 
   cublasHandle_t _handle;
 
-  std::string _transform_path;
+  std::string _transition_path;
   std::string _state_path;
   int _num_states;
   int _num_particles;
