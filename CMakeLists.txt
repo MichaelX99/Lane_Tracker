@@ -35,6 +35,10 @@ cuda_add_executable(${PROJECT_NAME}
   src/main.cpp
 )
 
+add_executable(Camera_Spoof
+  src/Camera_Spoof.cpp
+)
+
 target_link_libraries(${PROJECT_NAME}
   ${CUDA_LIBRARIES}
   ${CUDA_curand_LIBRARY}
@@ -43,8 +47,18 @@ target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
 
+target_link_libraries(Camera_Spoof
+  ${catkin_LIBRARIES}
+)
+
 ## Mark executables and/or libraries for installation
 install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(TARGETS ${PROJECT_NAME} Camera_Spoof
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

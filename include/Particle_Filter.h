@@ -12,6 +12,8 @@
 
 #include <boost/filesystem.hpp>
 
+#include "Tools.h"
+
 class Particle_Filter
 {
 public:
@@ -36,11 +38,14 @@ private:
   std::vector<float> _states;
 
   // Memory for particles
-  float* _d_particles;
+  float* _d_particle_matrix;
+  float* _d_avg_particle;
 
   // Memory for transition matrix
   float* _h_transition_matrix;
   float* _d_transition_matrix;
+
+  float* _d_sensor_observation;
 
   void load_state_vector();
 

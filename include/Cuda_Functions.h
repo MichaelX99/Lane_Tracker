@@ -10,17 +10,19 @@
 #include <iostream>
 #include <stdio.h>
 
-void cuda_initialize_particles(float* d_particles, const int num_states, const int num_particles);
+float* cuda_initialize_particles(float* d_particles, const int num_states, const int num_particles);
 
-void cuda_apply_transition(cublasHandle_t handle);
+float* cuda_apply_transition(cublasHandle_t handle, float* particles, float* transition, const int num_states, const int num_particles);
 
-void cuda_copy_transition_matrix(float* h_transition_matrix, float* d_transition_matrix, const int num_states);
+float* cuda_copy_transition_matrix(float* h_transition_matrix, float* d_transition_matrix, const int num_states);
 
-int cuda_compute_argmax_state(float* d_particles, const int num_states, const int num_particles);
+int cuda_compute_argmax_state(cublasHandle_t handle, float* d_particle_matrix, float* d_avg_particle, const int num_states, const int num_particles);
 
-void cuda_form_obs_vector();
-void cuda_reweight_particles();
-void cuda_resample_particles();
+float* initialize_gpu_array(float* A, const int num_states);
+
+float* cuda_form_obs_vector(float* sensor_observation, const int index);
+float* cuda_reweight_particles(float* particle_matrix, float* sensor_observation, const int num_states, const int num_particles);
+float* cuda_resample_particles(float* particle_matrix);
 
 void cuda_destroy(float* d_A);
 #endif

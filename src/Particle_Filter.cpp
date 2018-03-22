@@ -14,10 +14,12 @@ Particle_Filter::Particle_Filter()
 
   cublasCreate(&_handle);
 
-  cuda_initialize_particles(_d_particles, _num_states, _num_particles);
+  _d_particle_matrix = cuda_initialize_particles(_d_particle_matrix, _num_states, _num_particles);
 
   load_transition_matrix();
   load_state_vector();
+  _d_sensor_observation = initialize_gpu_array(_d_sensor_observation, _num_states);
+  _d_avg_particle = initialize_gpu_array(_d_avg_particle, _num_states);
 }
 
 Particle_Filter::~Particle_Filter()
@@ -25,15 +27,15 @@ Particle_Filter::~Particle_Filter()
   cublasDestroy(_handle);
   free(_h_transition_matrix);
 
-  cuda_destroy(_d_particles);
+  cuda_destroy(_d_particle_matrix);
   cuda_destroy(_d_transition_matrix);
 }
 
 void Particle_Filter::img_callback(const sensor_msgs::Image& msg)
 {
-  cuda_apply_transition(_handle);
+  cuda_apply_transition(_handle, _d_particle_matrix, _d_transition_matrix, _num_states, _num_particles);
 
-  int index = cuda_compute_argmax_state(_d_particles, _num_states, _num_particles);
+  int index = cuda_compute_argmax_state(_handle, _d_particle_matrix, _d_avg_particle, _num_states, _num_particles);
 
   // Find which state the index is
   float state = _states[index];
@@ -47,19 +49,21 @@ void Particle_Filter::obs_callback(const std_msgs::Float32& msg)
 {
   float state = msg.data;
 
-  cuda_form_obs_vector();
-  cuda_reweight_particles();
-  cuda_resample_particles();
+  int index;
+
+  _d_sensor_observation = cuda_form_obs_vector(_d_sensor_observation, index);
+  _d_particle_matrix = cuda_reweight_particles(_d_particle_matrix, _d_sensor_observation, _num_states, _num_particles);
+  _d_particle_matrix = cuda_resample_particles(_d_particle_matrix);
 }
 
 void Particle_Filter::load_state_vector()
 {
-
+  _states = Populate_States(_state_path);
 }
 
 void Particle_Filter::load_transition_matrix()
 {
-  
+  _h_transition_matrix = Populate_Transform(_transition_path);
 
-  cuda_copy_transition_matrix(_h_transition_matrix, _d_transition_matrix, _num_states);
+  _d_transition_matrix = cuda_copy_transition_matrix(_h_transition_matrix, _d_transition_matrix, _num_states);
 }
