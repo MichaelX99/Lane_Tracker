@@ -122,6 +122,14 @@ float* cuda_fill_rand(float *d_particle_matrix, const int num_states, const int 
 float* initialize_gpu_ones(float* A, const int size)
 {
   HANDLE_CUDA_ERROR( cudaMalloc((void**)&A, size * sizeof(float)) );
+  float* h_A = (float*) malloc(size * sizeof(float));
+  for (int i = 0; i < size; i++)
+  {
+    h_A[i] = 1.0;
+  }
+  HANDLE_CUDA_ERROR( cudaMemcpy(A, h_A, size * sizeof(float), cudaMemcpyHostToDevice) );
+
+  free(h_A);
 
   return A;
 }
@@ -142,7 +150,31 @@ float* gpu_blas_mmul(const float *A, const float *B, float *C, const int m, cons
   return C;
 }
 
-float* cuda_normalize_particles(float *d_particle_matrix, const int num_states, const int num_particles)
+// Matrix Vector Multiplication
+// c(m,1) = A(m,n) * b(n,1)
+float* gpu_blas_vmul(const float *A, const float *b, float *c, const int m, const int n, cublasHandle_t handle)
+{
+	/*int lda=m,ldb=k,ldc=m;
+	const float alf = 1;
+	const float bet = 0;
+	const float *alpha = &alf;
+	const float *beta = &bet;
+
+	// Do the actual multiplication
+	HANDLE_CUBLAS_ERROR( cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc) );*/
+
+  int lda=m;
+	const float alf = 1;
+	const float bet = 0;
+	const float *alpha = &alf;
+	const float *beta = &bet;
+
+  HANDLE_CUBLAS_ERROR( cublasSgemv(handle, CUBLAS_OP_T, m, n, alpha, A, lda, b, 1, beta, c, 1) );
+
+  return c;
+}
+
+float* cuda_normalize_particles(float *d_particle_matrix, float* d_ones, const int num_states, const int num_particles)
 {
   dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
   dim3 dimGrid((num_states + dimBlock.x - 1) / dimBlock.x,
@@ -155,11 +187,11 @@ float* cuda_normalize_particles(float *d_particle_matrix, const int num_states, 
   return d_particle_matrix;
 }
 
-float* cuda_initialize_particles(float* d_particles, const int num_states, const int num_particles)
+float* cuda_initialize_particles(cublasHandle_t handle, float* d_particles, float* d_ones, const int num_states, const int num_particles)
 {
   HANDLE_CUDA_ERROR( cudaMalloc((void**)&d_particles, num_states * num_particles * sizeof(float)) );
   d_particles = cuda_fill_rand(d_particles, num_particles, num_states);
-  d_particles = cuda_normalize_particles(d_particles, num_particles, num_states);
+  d_particles = cuda_normalize_particles(d_particles, d_ones, num_particles, num_states);
 
   return d_particles;
 }
@@ -191,13 +223,13 @@ int cuda_compute_argmax_state(cublasHandle_t handle,float* d_particle_matrix, fl
   return state;
 }
 
-float* cuda_apply_transition(cublasHandle_t handle, float* particles, float* transition, const int num_states, const int num_particles)
+float* cuda_apply_transition(cublasHandle_t handle, float* particles, float* transition, float* d_ones, const int num_states, const int num_particles)
 {
   // matrix multiply
   particles = gpu_blas_mmul(particles, particles, transition, num_particles, num_states, num_states, handle);
 
   // normalize matrix
-  particles = cuda_normalize_particles(particles, num_states, num_particles);
+  particles = cuda_normalize_particles(particles, d_ones, num_states, num_particles);
 
   return particles;
 }

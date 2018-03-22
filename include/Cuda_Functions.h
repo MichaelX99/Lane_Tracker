@@ -10,9 +10,11 @@
 #include <iostream>
 #include <stdio.h>
 
-float* cuda_initialize_particles(float* d_particles, const int num_states, const int num_particles);
 
-float* cuda_apply_transition(cublasHandle_t handle, float* particles, float* transition, const int num_states, const int num_particles);
+
+float* cuda_initialize_particles(cublasHandle_t handle, float* d_particles, float* d_ones, const int num_states, const int num_particles);
+
+float* cuda_apply_transition(cublasHandle_t handle, float* particles, float* transition, float* d_ones, const int num_states, const int num_particles);
 
 float* cuda_copy_transition_matrix(float* h_transition_matrix, float* d_transition_matrix, const int num_states);
 

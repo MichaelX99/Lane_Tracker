@@ -14,13 +14,14 @@ Particle_Filter::Particle_Filter()
 
   cublasCreate(&_handle);
 
-  _d_particle_matrix = cuda_initialize_particles(_d_particle_matrix, _num_states, _num_particles);
+  _d_row_sum = initialize_gpu_ones(_d_row_sum, _num_particles);
+
+  _d_particle_matrix = cuda_initialize_particles(_handle, _d_particle_matrix, _d_row_sum, _num_states, _num_particles);
 
   load_transition_matrix();
   load_state_vector();
   _d_sensor_observation = initialize_gpu_array(_d_sensor_observation, _num_states);
   _d_avg_particle = initialize_gpu_array(_d_avg_particle, _num_states);
-  _d_row_sum = initialize_gpu_ones(_d_row_sum, _num_particles);
 }
 
 Particle_Filter::~Particle_Filter()
@@ -34,7 +35,7 @@ Particle_Filter::~Particle_Filter()
 
 void Particle_Filter::img_callback(const sensor_msgs::Image& msg)
 {
-  cuda_apply_transition(_handle, _d_particle_matrix, _d_transition_matrix, _num_states, _num_particles);
+  cuda_apply_transition(_handle, _d_particle_matrix, _d_transition_matrix, _d_row_sum, _num_states, _num_particles);
 
   int index = cuda_compute_argmax_state(_handle, _d_particle_matrix, _d_avg_particle, _num_states, _num_particles);
 
