@@ -59,5 +59,7 @@ void Particle_Filter::load_state_vector()
 
 void Particle_Filter::load_transition_matrix()
 {
+  
+
   cuda_copy_transition_matrix(_h_transition_matrix, _d_transition_matrix, _num_states);
 }

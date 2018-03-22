@@ -29,6 +29,7 @@ include_directories(
 )
 
 cuda_add_executable(${PROJECT_NAME}
+  src/Tools.cpp
   src/Cuda_Functions.cu
   src/Particle_Filter.cpp
   src/main.cpp
