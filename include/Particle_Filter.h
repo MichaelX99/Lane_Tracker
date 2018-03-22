@@ -47,6 +47,8 @@ private:
 
   float* _d_sensor_observation;
 
+  float *_d_row_sum, _d_col_sum;
+
   void load_state_vector();
 
   // Function to read in the transition matrix file

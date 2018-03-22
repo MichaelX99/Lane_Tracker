@@ -20,6 +20,7 @@ Particle_Filter::Particle_Filter()
   load_state_vector();
   _d_sensor_observation = initialize_gpu_array(_d_sensor_observation, _num_states);
   _d_avg_particle = initialize_gpu_array(_d_avg_particle, _num_states);
+  _d_row_sum = initialize_gpu_ones(_d_row_sum, _num_particles);
 }
 
 Particle_Filter::~Particle_Filter()

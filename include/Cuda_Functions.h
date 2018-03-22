@@ -20,6 +20,8 @@ int cuda_compute_argmax_state(cublasHandle_t handle, float* d_particle_matrix, f
 
 float* initialize_gpu_array(float* A, const int num_states);
 
+float* initialize_gpu_ones(float* A, const int size);
+
 float* cuda_form_obs_vector(float* sensor_observation, const int index);
 float* cuda_reweight_particles(float* particle_matrix, float* sensor_observation, const int num_states, const int num_particles);
 float* cuda_resample_particles(float* particle_matrix);

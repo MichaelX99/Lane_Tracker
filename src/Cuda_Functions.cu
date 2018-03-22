@@ -1,5 +1,7 @@
 #include <Cuda_Functions.h>
 
+const int BLOCK_SIZE = 16;
+
 const char* cublasGetErrorString(cublasStatus_t status)
 {
     switch(status)
@@ -79,12 +81,27 @@ static void HandleCURANDError( curandStatus_t err,
 
 __global__ void normalize(float* d_particle_matrix, const int num_states, const int num_particles)
 {
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
 
+  if (row < num_states && col < num_particles)
+  {
+
+  }
 }
 
 __global__ void average_matrix(float* d_particle_matrix, float* d_avg_particle, const int num_states, const int num_particles)
 {
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
 
+  if (row < num_states && col < num_particles)
+  {
+    for (int i = 0; i < num_particles; i++)
+    {
+
+    }
+  }
 }
 
 float* cuda_fill_rand(float *d_particle_matrix, const int num_states, const int num_particles)
@@ -100,6 +117,13 @@ float* cuda_fill_rand(float *d_particle_matrix, const int num_states, const int 
 	HANDLE_CURAND_ERROR( curandGenerateUniform(prng, d_particle_matrix, num_states * num_particles) );
 
   return d_particle_matrix;
+}
+
+float* initialize_gpu_ones(float* A, const int size)
+{
+  HANDLE_CUDA_ERROR( cudaMalloc((void**)&A, size * sizeof(float)) );
+
+  return A;
 }
 
 // Multiply the arrays A and B on GPU and save the result in C
@@ -120,7 +144,13 @@ float* gpu_blas_mmul(const float *A, const float *B, float *C, const int m, cons
 
 float* cuda_normalize_particles(float *d_particle_matrix, const int num_states, const int num_particles)
 {
-  normalize<<<1, 1>>> (d_particle_matrix, num_states, num_particles);
+  dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
+  dim3 dimGrid((num_states + dimBlock.x - 1) / dimBlock.x,
+               (num_particles + dimBlock.y - 1) / dimBlock.y);
+
+  normalize<<<dimGrid, dimBlock>>> (d_particle_matrix, num_states, num_particles);
+
+  HANDLE_CUDA_ERROR( cudaThreadSynchronize() );
 
   return d_particle_matrix;
 }
@@ -146,8 +176,14 @@ int cuda_compute_argmax_state(cublasHandle_t handle,float* d_particle_matrix, fl
 {
   int state;
 
+  dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
+  dim3 dimGrid((num_states + dimBlock.x - 1) / dimBlock.x,
+               (num_particles + dimBlock.y - 1) / dimBlock.y);
+
   // compute the average particle state
-  average_matrix<<<1, 1>>> (d_particle_matrix, d_avg_particle, num_states, num_particles);
+  average_matrix<<<dimGrid, dimBlock>>> (d_particle_matrix, d_avg_particle, num_states, num_particles);
+
+  HANDLE_CUDA_ERROR( cudaThreadSynchronize() );
 
   // find the argmax
   HANDLE_CUBLAS_ERROR( cublasIsamax(handle, num_states, d_avg_particle, 1, &state) );
