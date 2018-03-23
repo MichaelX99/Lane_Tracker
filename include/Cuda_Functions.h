@@ -20,7 +20,7 @@ float* cuda_apply_transition(cublasHandle_t handle, float* particles, float* tra
 
 float* cuda_copy_transition_matrix(float* h_transition_matrix, float* d_transition_matrix, const int num_states);
 
-int cuda_compute_argmax_state(cublasHandle_t handle, float* d_particle_matrix, float* d_avg_particle, const int num_states, const int num_particles);
+int cuda_compute_argmax_state(cublasHandle_t handle, float* d_particle_matrix, float* d_avg_particle, float* d_particle_ones, float* d_state_sum, float* d_state_ones, float* d_col_sum, const int num_states, const int num_particles);
 
 float* initialize_gpu_array(float* A, const int num_states);
 

@@ -4,3 +4,4 @@ Data/
 *.pyc
 *.npy
 *.pb
+models/*

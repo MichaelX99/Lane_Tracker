@@ -15,9 +15,12 @@ Particle_Filter::Particle_Filter()
   cublasCreate(&_handle);
 
   _d_particle_ones = initialize_gpu_ones(_d_particle_ones, _num_states);
-  //_d_sensor_observation = initialize_gpu_array(_d_sensor_observation, _num_states);
-  //_d_avg_particle = initialize_gpu_array(_d_avg_particle, _num_states);
+  _d_state_ones = initialize_gpu_ones(_d_state_ones, _num_states);
+  _d_sensor_observation = initialize_gpu_array(_d_sensor_observation, _num_states);
+  _d_avg_particle = initialize_gpu_array(_d_avg_particle, _num_states);
   _d_row_sum = initialize_gpu_array(_d_row_sum, _num_particles);
+  _d_col_sum = initialize_gpu_array(_d_col_sum, _num_states);
+  _d_state_sum = initialize_gpu_array(_d_state_sum, 1);
 
   _d_particle_matrix = cuda_initialize_particles(_handle, _d_particle_matrix, _d_particle_ones, _d_row_sum, _num_states, _num_particles);
 
@@ -28,9 +31,8 @@ Particle_Filter::Particle_Filter()
 
   print_matrix("particle matrix", _d_particle_matrix, _num_particles, _num_states);
 
-  _d_particle_matrix = cuda_apply_transition(_handle, _d_particle_matrix, _d_transition_matrix, _d_particle_ones, _d_row_sum, _num_states, _num_particles);
+  int index = cuda_compute_argmax_state(_handle, _d_particle_matrix, _d_avg_particle, _d_particle_ones, _d_state_sum, _d_state_ones, _d_col_sum, _num_states, _num_particles);
 
-  print_matrix("after transition", _d_particle_matrix, _num_particles, _num_states);
 }
 
 Particle_Filter::~Particle_Filter()
@@ -39,14 +41,21 @@ Particle_Filter::~Particle_Filter()
   free(_h_transition_matrix);
 
   cuda_destroy(_d_particle_matrix);
+  cuda_destroy(_d_avg_particle);
   cuda_destroy(_d_transition_matrix);
+  cuda_destroy(_d_sensor_observation);
+  cuda_destroy(_d_state_sum);
+  cuda_destroy(_d_particle_ones);
+  cuda_destroy(_d_state_ones);
+  cuda_destroy(_d_row_sum);
+  cuda_destroy(_d_col_sum);
 }
 
 void Particle_Filter::img_callback(const sensor_msgs::Image& msg)
 {
-  //cuda_apply_transition(_handle, _d_particle_matrix, _d_transition_matrix, _d_row_sum, _num_states, _num_particles);
+  cuda_apply_transition(_handle, _d_particle_matrix, _d_transition_matrix, _d_particle_ones, _d_row_sum, _num_states, _num_particles);
 
-  int index = cuda_compute_argmax_state(_handle, _d_particle_matrix, _d_avg_particle, _num_states, _num_particles);
+  int index = cuda_compute_argmax_state(_handle, _d_particle_matrix, _d_avg_particle, _d_particle_ones, _d_state_sum, _d_state_ones, _d_col_sum, _num_states, _num_particles);
 
   // Find which state the index is
   float state = _states[index];
