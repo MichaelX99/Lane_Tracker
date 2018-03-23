@@ -33,6 +33,7 @@ Particle_Filter::Particle_Filter()
 
   int index = cuda_compute_argmax_state(_handle, _d_particle_matrix, _d_avg_particle, _d_particle_ones, _d_state_sum, _d_state_ones, _d_col_sum, _num_states, _num_particles);
 
+
 }
 
 Particle_Filter::~Particle_Filter()
@@ -69,9 +70,44 @@ void Particle_Filter::obs_callback(const std_msgs::Float32& msg)
 {
   float state = msg.data;
 
-  int index;
+  // Garbage used to find the closest state index to what the observed state is
+  int low_index, high_index;
+  int closest_ind = -1;
+  for (int i = 0; i < _states.size(); i++)
+  {
+    if (state == _states[i])
+    {
+      closest_ind = i;
+    }
+    else
+    {
+      if (_states[i] < state)
+      {
+        low_index = i;
+      }
+      else if (_states[i] > state)
+      {
+        high_index = i;
+      }
+    }
+  }
+  if (closest_ind == -1)
+  {
+    float low_diff, high_diff;
 
-  _d_sensor_observation = cuda_form_obs_vector(_d_sensor_observation, index);
+    low_diff = state - _states[low_index];
+    high_diff = _states[high_index] - state;
+    if (high_diff > low_diff)
+    {
+      closest_ind = low_index;
+    }
+    else
+    {
+      closest_ind = high_index;
+    }
+  }
+
+  _d_sensor_observation = cuda_form_obs_vector(_d_sensor_observation, closest_ind);
   _d_particle_matrix = cuda_reweight_particles(_d_particle_matrix, _d_sensor_observation, _num_states, _num_particles);
   _d_particle_matrix = cuda_resample_particles(_d_particle_matrix);
 }
