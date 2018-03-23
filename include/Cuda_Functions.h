@@ -10,11 +10,13 @@
 #include <iostream>
 #include <stdio.h>
 
+void print_matrix(char* name, float* A, const int rows, const int cols);
 
+float* cuda_normalize_particles(float *d_particle_matrix, float* d_particle_ones, float* d_row_sum, const int num_states, const int num_particles, cublasHandle_t handle);
 
-float* cuda_initialize_particles(cublasHandle_t handle, float* d_particles, float* d_ones, const int num_states, const int num_particles);
+float* cuda_initialize_particles(cublasHandle_t handle, float* d_particles, float* d_ones, float* d_row_sum, const int num_states, const int num_particles);
 
-float* cuda_apply_transition(cublasHandle_t handle, float* particles, float* transition, float* d_ones, const int num_states, const int num_particles);
+float* cuda_apply_transition(cublasHandle_t handle, float* particles, float* transition, float* d_ones, float* d_sum, const int num_states, const int num_particles);
 
 float* cuda_copy_transition_matrix(float* h_transition_matrix, float* d_transition_matrix, const int num_states);
 

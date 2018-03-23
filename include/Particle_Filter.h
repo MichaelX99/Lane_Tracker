@@ -47,7 +47,7 @@ private:
 
   float* _d_sensor_observation;
 
-  float *_d_row_sum, _d_col_sum;
+  float *_d_particle_ones, *_d_state_ones, *_d_row_sum;
 
   void load_state_vector();
 
