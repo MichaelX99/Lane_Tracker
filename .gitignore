@@ -5,3 +5,5 @@ Data/
 *.npy
 *.pb
 models/*
+segmentation_training/runs/*
+segmentation_training/data/*
