@@ -2,6 +2,7 @@ import os.path
 import tensorflow as tf
 import helper
 import numpy as np
+from glob import glob
 
 import tensorflow.contrib.slim as slim
 
@@ -66,13 +67,16 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
             count += 1
         print("")
 
-def train_and_save(sess, data_dir, runs_dir, image_shape, num_classes, Pretrained_variables, epochs, save_name):
+def train_and_save(sess, runs_dir, image_shape, num_classes, batch_size, Pretrained_variables, epochs, save_name, data_dir, pickle_files=None):
     input_image = tf.placeholder(tf.float32, shape=[None, None, None, 3], name='input_image')
     keep_prob = tf.placeholder(tf.float32, shape=[], name="keep_prob")
     is_training = tf.placeholder(tf.bool, shape=[], name="is_training")
 
     # Create function to get batches
-    get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, 'data_road/training'), image_shape)
+    if pickle_files != None:
+        get_batches_fn = helper.Cityscapes_gen_batch_function(pickle_files)
+    else:
+        get_batches_fn = helper.KITTI_gen_batch_function(os.path.join(data_dir, 'data_road/training'), image_shape)
 
     vgg_layer3_out, vgg_layer4_out, vgg_layer7_out = vgg15(input_image, keep_prob)
 
@@ -86,11 +90,9 @@ def train_and_save(sess, data_dir, runs_dir, image_shape, num_classes, Pretraine
 
     assign_weights(sess, Pretrained_variables)
 
-    batch_size = 3
     train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image, correct_label, keep_prob, learning_rate, is_training)
 
     logits = tf.identity(logits, "logits")
-
 
     saver = tf.train.Saver()
 
@@ -117,10 +119,73 @@ def train_and_save(sess, data_dir, runs_dir, image_shape, num_classes, Pretraine
                       restore_op_name, filename_tensor_name,
                       output_frozen_graph_name, clear_devices, "")
 
-def Cityscapes_train(image_shape):
-    num_classes = 2
+def Cityscapes_train(image_shape, batch_size):
+    num_classes = 20
+    epochs = 100
     data_dir = './data'
     runs_dir = './runs'
+    save_name = "city"
+
+    train_cities = ["aachen", "bochum", "bremen", "cologne", "darmstadt", "dusseldorf", "erfurt", "hamburg", "hanover",
+              "jena", "krefeld", "monchengladbach", "strasbourg", "stuttgart", "tubingen", "ulm", "weimar", "zurich"]
+
+    validation_cities = ["frankfurt", "lindau", "munster"]
+
+    testing_cities = ["berlin", "bielefeld", "bonn", "leverkusen", "mainz", "munich"]
+
+    Cityscapes_dir = "/home/mikep/DataSets/Cityscapes"
+    labels_dir = Cityscapes_dir + "/Labels/"
+
+    city_labels = []
+    city_imgs = []
+    for city in train_cities:
+        train_dir = labels_dir + "train/"
+        img_dir = Cityscapes_dir + "/Train/"
+        labels = glob(train_dir + city + "/*gtFine_color.png")
+        labels.sort()
+        imgs = glob(img_dir + "left_img/" + city + "/*leftImg8bit.png")
+        imgs.sort()
+        if len(labels) == 0 or len(imgs) == 0:
+            print("error")
+
+        for label in labels:
+            city_labels.append(label)
+        for img in imgs:
+            city_imgs.append(img)
+
+
+    for city in validation_cities:
+        val_dir = labels_dir + "val/"
+        img_dir = Cityscapes_dir + "/Val/"
+        labels = glob(val_dir + city + "/*gtFine_color.png")
+        labels.sort()
+        imgs = glob(img_dir + "left_img/" + city + "/*leftImg8bit.png")
+        imgs.sort()
+        if len(labels) == 0 or len(imgs) == 0:
+            print("error")
+
+        for label in labels:
+            city_labels.append(label)
+        for img in imgs:
+            city_imgs.append(img)
+
+    for city in testing_cities:
+        val_dir = labels_dir + "test/"
+        img_dir = Cityscapes_dir + "/Test/"
+        labels = glob(val_dir + city + "/*gtFine_color.png")
+        labels.sort()
+        imgs = glob(img_dir + "left_img/" + city + "/*leftImg8bit.png")
+        imgs.sort()
+        if len(labels) == 0 or len(imgs) == 0:
+            print("error")
+
+        for label in labels:
+            city_labels.append(label)
+        for img in imgs:
+            city_imgs.append(img)
+
+    save_path = data_dir + "/cityscapes/"
+    pickle_files = helper.prepape_dataset(save_path, city_imgs, city_labels, num_classes, image_shape, batch_size)
 
     # Download pretrained vgg model
     helper.maybe_download_pretrained_vgg(data_dir)
@@ -133,7 +198,9 @@ def Cityscapes_train(image_shape):
         vgg_weights = extract_VGG_weights(sess, vgg_path)
 
     with tf.Session(graph=Seg_graph) as sess:
-        train_and_save(sess, data_dir, runs_dir, image_shape, num_classes, Cityscapes_variables, epochs, save_name)
+        train_and_save(sess, runs_dir, image_shape, num_classes, batch_size, vgg_weights, epochs, save_name, data_dir, pickle_files=pickle_files)
+
+
 
 
 def KITTI_train(image_shape, saved_path):
@@ -146,16 +213,17 @@ def KITTI_train(image_shape, saved_path):
     epochs = 1#5
     KITTI_graph = tf.Graph()
     with tf.Session(graph = KITTI_graph) as sess:
-        train_and_save(sess, data_dir, runs_dir, image_shape, num_classes, Cityscapes_variables, epochs, save_name)
+        train_and_save(sess, runs_dir, image_shape, num_classes, Cityscapes_variables, epochs, save_name, data_dir=data_dir)
 
 def run():
     image_shape = (160, 576)
+    batch_size = 3
 
-    #Cityscapes_train(image_shape)
+    Cityscapes_train(image_shape, batch_size)
 
     saved_path = "./runs/frozen.pb"
 
-    KITTI_train(image_shape, saved_path)
+    #KITTI_train(image_shape, saved_path)
 
 
 
