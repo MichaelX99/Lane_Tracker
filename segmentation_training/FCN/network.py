@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+import numpy as np
 
 def extract_VGG_weights(sess, vgg_path):
     #https://github.com/asimonov/CarND3-P2-FCN-Semantic-Segmentation/blob/master/main.py
@@ -39,6 +40,7 @@ def extract_Cityscapes_weights(saved_path):
                 #print(var.name + ": " + var.op_def.name)
                 tensor = Cityscapes_graph.get_tensor_by_name(name + ':0')
                 value = sess.run(tensor, feed_dict={is_training: False})
+                print(name + ": " + str(np.shape(value)))
                 Cityscapes_variables[name] = value
 
     return Cityscapes_variables
@@ -50,7 +52,7 @@ def assign_weights(sess, weights):
     for temp in tensors:
         key_name = temp.name[:-2]
         if key_name in weights.keys():
-            print("YES: " + key_name)
+            print("YES: " + key_name + ", " + str(np.shape(weights[key_name])))
             sess.run(temp.assign(weights[key_name]))
         else:
             print("NO: " + key_name)

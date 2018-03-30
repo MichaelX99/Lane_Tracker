@@ -5,5 +5,7 @@ Data/
 *.npy
 *.pb
 models/*
-segmentation_training/runs/*
-segmentation_training/data/*
+PSPNet-tensorflow/*
+segmentation_training/FCN/data/*
+segmentation_training/FCN/runs/*
+segmentation_training/PSPNet/model/*

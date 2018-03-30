@@ -112,7 +112,7 @@ def train_and_save(sess, runs_dir, image_shape, num_classes, batch_size, Pretrai
     output_node_names = "logits"
     restore_op_name = "save/restore_all"
     filename_tensor_name = "save/Const:0"
-    output_frozen_graph_name = 'runs/' + save_name + '.pb'
+    output_frozen_graph_name = 'runs/frozen_' + save_name + '.pb'
     clear_devices = True
     freeze_graph.freeze_graph(input_graph_path, input_saver_def_path,
                       input_binary, checkpoint_path, output_node_names,
@@ -121,7 +121,7 @@ def train_and_save(sess, runs_dir, image_shape, num_classes, batch_size, Pretrai
 
 def Cityscapes_train(image_shape, batch_size):
     num_classes = 20
-    epochs = 100
+    epochs = 50
     data_dir = './data'
     runs_dir = './runs'
     save_name = "city"
@@ -203,27 +203,27 @@ def Cityscapes_train(image_shape, batch_size):
 
 
 
-def KITTI_train(image_shape, saved_path):
+def KITTI_train(image_shape, saved_path, batch_size):
     Cityscapes_variables = extract_Cityscapes_weights(saved_path)
 
     data_dir = './data'
     runs_dir = './runs'
     save_name = "final"
     num_classes = 2
-    epochs = 1#5
+    epochs = 15
     KITTI_graph = tf.Graph()
     with tf.Session(graph = KITTI_graph) as sess:
-        train_and_save(sess, runs_dir, image_shape, num_classes, Cityscapes_variables, epochs, save_name, data_dir=data_dir)
+        train_and_save(sess, runs_dir, image_shape, num_classes,batch_size,  Cityscapes_variables, epochs, save_name, data_dir=data_dir)
 
 def run():
     image_shape = (160, 576)
     batch_size = 3
 
-    Cityscapes_train(image_shape, batch_size)
+    #Cityscapes_train(image_shape, batch_size)
 
-    saved_path = "./runs/frozen.pb"
+    saved_path = "./runs/frozen_city.pb"
 
-    #KITTI_train(image_shape, saved_path)
+    KITTI_train(image_shape, saved_path, batch_size)
 
 
 
