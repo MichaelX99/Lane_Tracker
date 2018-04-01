@@ -4,11 +4,67 @@ import numpy as np
 import os
 from scipy import misc
 
+import time
+
+def preprocess(img, h, w):
+    IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
+    # Convert RGB to BGR
+    img_r, img_g, img_b = tf.split(axis=2, num_or_size_splits=3, value=img)
+    img = tf.cast(tf.concat(axis=2, values=[img_b, img_g, img_r]), dtype=tf.float32)
+    # Extract mean.
+    img -= IMG_MEAN
+
+    pad_img = tf.image.pad_to_bounding_box(img, 0, 0, h, w)
+    pad_img = tf.expand_dims(pad_img, dim=0)
+
+    return pad_img
+
+def decode_labels(mask, img_shape, num_classes):
+    if num_classes == 150:
+        color_table = read_labelcolours(matfn)
+    else:
+        color_table = label_colours
+
+    color_mat = tf.constant(color_table, dtype=tf.float32)
+    onehot_output = tf.one_hot(mask, depth=num_classes)
+    onehot_output = tf.reshape(onehot_output, (-1, num_classes))
+    pred = tf.matmul(onehot_output, color_mat)
+    pred = tf.reshape(pred, (1, img_shape[0], img_shape[1], 3))
+
+    return pred
+
+def prepare_label(input_batch, new_size, num_classes, one_hot=True):
+    with tf.name_scope('label_encode'):
+        input_batch = tf.image.resize_nearest_neighbor(input_batch, new_size) # as labels are integer numbers, need to use NN interp.
+        input_batch = tf.squeeze(input_batch, squeeze_dims=[3]) # reducing the channel dimension.
+        if one_hot:
+            input_batch = tf.one_hot(input_batch, depth=num_classes)
+
+    return input_batch
+
+label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
+                # 0 = road, 1 = sidewalk, 2 = building
+                ,(102, 102, 156), (190, 153, 153), (153, 153, 153)
+                # 3 = wall, 4 = fence, 5 = pole
+                ,(250, 170, 29), (219, 219, 0), (106, 142, 35)
+                # 6 = traffic light, 7 = traffic sign, 8 = vegetation
+                ,(152, 250, 152), (69, 129, 180), (219, 19, 60)
+                # 9 = terrain, 10 = sky, 11 = person
+                ,(255, 0, 0), (0, 0, 142), (0, 0, 69)
+                # 12 = rider, 13 = car, 14 = truck
+                ,(0, 60, 100), (0, 79, 100), (0, 0, 230)
+                # 15 = bus, 16 = train, 17 = motocycle
+                ,(119, 10, 32)]
+                # 18 = bicycle
+
+model_path = './model'
+num_classes = 19
+
 class PSPNet(object):
-    def __init__(self):
+    def __init__(self, num_classes):
         self.is_training = tf.placeholder(tf.bool, shape=[], name="is_training")
 
-        self.num_classes = 19
+        self.num_classes = num_classes
 
     def block(self, input, outs, sizes, strides, pad, names, rate=None):
         conv1 = self.compound_conv(input, outs[0], sizes[0], strides[0], names[0])
@@ -30,8 +86,8 @@ class PSPNet(object):
                              padding='VALID',
                              biases_initializer=None):
 
-            conv = slim.conv2d(inputs=input, num_outputs=output, kernel_size=shape, stride=stride, rate=rate, scope=name)
-            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, training=self.is_training, name=name+'_bn')
+            conv = slim.conv2d(inputs=input, num_outputs=output, kernel_size=shape, stride=stride, rate=rate, scope=name, trainable=False)
+            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, training=self.is_training, name=name+'_bn', trainable=False)
 
             conv = tf.nn.relu(conv, name=name+'_bn_relu')
 
@@ -46,8 +102,8 @@ class PSPNet(object):
                              padding=padding,
                              biases_initializer=None):
 
-            conv = slim.conv2d(inputs=input, num_outputs=output, kernel_size=shape, stride=stride, scope=name)
-            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, training=self.is_training, name=name+'_bn')
+            conv = slim.conv2d(inputs=input, num_outputs=output, kernel_size=shape, stride=stride, scope=name, trainable=False)
+            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, training=self.is_training, name=name+'_bn', trainable=False)
 
 
             if relu == True:
@@ -61,7 +117,7 @@ class PSPNet(object):
 
         return add
 
-    def inference(self, input):
+    def inference(self, input, lane=True):
         conv1_1_3x3_s2 = self.compound_conv(input, 64, 3, 2, 'conv1_1_3x3_s2', padding='SAME')
 
         conv1_2_3x3 = self.compound_conv(conv1_1_3x3_s2, 64, 3, 1, 'conv1_2_3x3', padding='SAME')
@@ -288,19 +344,16 @@ class PSPNet(object):
                              activation_fn=None,
                              padding='VALID'):
 
-            conv6 = slim.conv2d(conv5_4, self.num_classes, [1, 1], [1, 1], scope='conv6')
+            conv6 = slim.conv2d(conv5_4, self.num_classes, [1, 1], [1, 1], scope='conv6', trainable=False)
 
+            if lane:
+                conv7 = slim.conv2d(conv5_4, 2, [1, 1], [1, 1], scope='conv7')
 
-        return conv6
-
-
-
-
-
-
-
-
-
+                return conv7, conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
+                
+            else:
+                return conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
+        #return conv6
 
 
 
@@ -313,6 +366,13 @@ class PSPNet(object):
 
 
 
+
+
+
+
+
+
+"""
 def preprocess(img, h, w):
     IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
     # Convert RGB to BGR
@@ -398,6 +458,14 @@ if ckpt and ckpt.model_checkpoint_path:
 else:
     print("NO MODEL")
 
+t = 0.
+for _ in range(100):
+    start_time = time.time()
+    preds2 = sess.run(my_pred, feed_dict={net_obj.is_training:False})
+    t += time.time() - start_time
 
-preds2 = sess.run(my_pred, feed_dict={net_obj.is_training:False})
+print(t / 100.)
+
+
 misc.imsave('test1.png', preds2[0])
+"""
