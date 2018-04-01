@@ -58,13 +58,19 @@ label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
                 # 18 = bicycle
 
 model_path = './model'
-num_classes = 19
+#num_classes = 19
 
 class PSPNet(object):
-    def __init__(self, num_classes):
-        self.is_training = tf.placeholder(tf.bool, shape=[], name="is_training")
+    def __init__(self, num_classes, decay=None, training=True):
+        if training:
+            self.is_training = tf.placeholder(tf.bool, shape=[], name="is_training")
+        else:
+            self.is_training = tf.constant(False, dtype=tf.bool, shape=[], name="is_training")
 
         self.num_classes = num_classes
+
+        if decay is not None:
+            self.decay = decay
 
     def block(self, input, outs, sizes, strides, pad, names, rate=None):
         conv1 = self.compound_conv(input, outs[0], sizes[0], strides[0], names[0])
@@ -87,7 +93,7 @@ class PSPNet(object):
                              biases_initializer=None):
 
             conv = slim.conv2d(inputs=input, num_outputs=output, kernel_size=shape, stride=stride, rate=rate, scope=name, trainable=False)
-            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, training=self.is_training, name=name+'_bn', trainable=False)
+            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name=name+'_bn', trainable=False)
 
             conv = tf.nn.relu(conv, name=name+'_bn_relu')
 
@@ -103,7 +109,7 @@ class PSPNet(object):
                              biases_initializer=None):
 
             conv = slim.conv2d(inputs=input, num_outputs=output, kernel_size=shape, stride=stride, scope=name, trainable=False)
-            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, training=self.is_training, name=name+'_bn', trainable=False)
+            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name=name+'_bn', trainable=False)
 
 
             if relu == True:
@@ -347,10 +353,10 @@ class PSPNet(object):
             conv6 = slim.conv2d(conv5_4, self.num_classes, [1, 1], [1, 1], scope='conv6', trainable=False)
 
             if lane:
-                conv7 = slim.conv2d(conv5_4, 2, [1, 1], [1, 1], scope='conv7')
+                conv7 = slim.conv2d(conv5_4, 2, [1, 1], [1, 1], scope='conv7', weights_regularizer=slim.l2_regularizer(self.decay))
 
                 return conv7, conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
-                
+
             else:
                 return conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
         #return conv6
