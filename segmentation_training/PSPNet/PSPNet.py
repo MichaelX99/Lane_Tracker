@@ -6,8 +6,9 @@ from scipy import misc
 
 import time
 
+IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
+
 def preprocess(img, h, w):
-    IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
     # Convert RGB to BGR
     img_r, img_g, img_b = tf.split(axis=2, num_or_size_splits=3, value=img)
     img = tf.cast(tf.concat(axis=2, values=[img_b, img_g, img_r]), dtype=tf.float32)
@@ -18,20 +19,6 @@ def preprocess(img, h, w):
     pad_img = tf.expand_dims(pad_img, dim=0)
 
     return pad_img
-
-def decode_labels(mask, img_shape, num_classes):
-    if num_classes == 150:
-        color_table = read_labelcolours(matfn)
-    else:
-        color_table = label_colours
-
-    color_mat = tf.constant(color_table, dtype=tf.float32)
-    onehot_output = tf.one_hot(mask, depth=num_classes)
-    onehot_output = tf.reshape(onehot_output, (-1, num_classes))
-    pred = tf.matmul(onehot_output, color_mat)
-    pred = tf.reshape(pred, (1, img_shape[0], img_shape[1], 3))
-
-    return pred
 
 def prepare_label(input_batch, new_size, num_classes, one_hot=True):
     with tf.name_scope('label_encode'):
@@ -57,20 +44,21 @@ label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
                 ,(119, 10, 32)]
                 # 18 = bicycle
 
-model_path = './model'
-#num_classes = 19
+lane_colors = [(255, 0, 0)]
+              # 0 = lane
+
 
 class PSPNet(object):
-    def __init__(self, num_classes, decay=None, training=True):
+    def __init__(self, decay=None, training=True):
         if training:
             self.is_training = tf.placeholder(tf.bool, shape=[], name="is_training")
         else:
             self.is_training = tf.constant(False, dtype=tf.bool, shape=[], name="is_training")
 
-        self.num_classes = num_classes
-
         if decay is not None:
             self.decay = decay
+        else:
+            self.decay = 0.
 
     def block(self, input, outs, sizes, strides, pad, names, rate=None):
         conv1 = self.compound_conv(input, outs[0], sizes[0], strides[0], names[0])
@@ -350,7 +338,7 @@ class PSPNet(object):
                              activation_fn=None,
                              padding='VALID'):
 
-            conv6 = slim.conv2d(conv5_4, self.num_classes, [1, 1], [1, 1], scope='conv6', trainable=False)
+            conv6 = slim.conv2d(conv5_4, 19, [1, 1], [1, 1], scope='conv6', trainable=False)
 
             if lane:
                 conv7 = slim.conv2d(conv5_4, 2, [1, 1], [1, 1], scope='conv7', weights_regularizer=slim.l2_regularizer(self.decay))
@@ -359,119 +347,3 @@ class PSPNet(object):
 
             else:
                 return conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
-        #return conv6
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-def preprocess(img, h, w):
-    IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
-    # Convert RGB to BGR
-    img_r, img_g, img_b = tf.split(axis=2, num_or_size_splits=3, value=img)
-    img = tf.cast(tf.concat(axis=2, values=[img_b, img_g, img_r]), dtype=tf.float32)
-    # Extract mean.
-    img -= IMG_MEAN
-
-    pad_img = tf.image.pad_to_bounding_box(img, 0, 0, h, w)
-    pad_img = tf.expand_dims(pad_img, dim=0)
-
-    return pad_img
-
-def decode_labels(mask, img_shape, num_classes):
-    if num_classes == 150:
-        color_table = read_labelcolours(matfn)
-    else:
-        color_table = label_colours
-
-    color_mat = tf.constant(color_table, dtype=tf.float32)
-    onehot_output = tf.one_hot(mask, depth=num_classes)
-    onehot_output = tf.reshape(onehot_output, (-1, num_classes))
-    pred = tf.matmul(onehot_output, color_mat)
-    pred = tf.reshape(pred, (1, img_shape[0], img_shape[1], 3))
-
-    return pred
-
-label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
-                # 0 = road, 1 = sidewalk, 2 = building
-                ,(102, 102, 156), (190, 153, 153), (153, 153, 153)
-                # 3 = wall, 4 = fence, 5 = pole
-                ,(250, 170, 29), (219, 219, 0), (106, 142, 35)
-                # 6 = traffic light, 7 = traffic sign, 8 = vegetation
-                ,(152, 250, 152), (69, 129, 180), (219, 19, 60)
-                # 9 = terrain, 10 = sky, 11 = person
-                ,(255, 0, 0), (0, 0, 142), (0, 0, 69)
-                # 12 = rider, 13 = car, 14 = truck
-                ,(0, 60, 100), (0, 79, 100), (0, 0, 230)
-                # 15 = bus, 16 = train, 17 = motocycle
-                ,(119, 10, 32)]
-                # 18 = bicycle
-
-model_path = './model'
-num_classes = 19
-
-img_path = './input.png'
-img = tf.image.decode_png(tf.read_file(img_path), channels=3)
-
-crop_size = [720, 720]
-img_shape = tf.shape(img)
-h, w = (tf.maximum(crop_size[0], img_shape[0]), tf.maximum(crop_size[1], img_shape[1]))
-img = preprocess(img, h, w)
-
-
-net_obj = PSPNet()
-my_output = net_obj.inference(img)
-
-
-# Predictions.
-my_output_up = tf.image.resize_bilinear(my_output, size=[h, w], align_corners=True)
-my_output_up = tf.image.crop_to_bounding_box(my_output_up, 0, 0, img_shape[0], img_shape[1])
-my_output_up = tf.argmax(my_output_up, axis=3)
-my_pred = decode_labels(my_output_up, img_shape, num_classes)
-
-
-
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
-sess = tf.Session(config=config)
-init = tf.global_variables_initializer()
-
-sess.run(init)
-
-restore_var = tf.global_variables()
-
-
-ckpt = tf.train.get_checkpoint_state(model_path)
-if ckpt and ckpt.model_checkpoint_path:
-    loader = tf.train.Saver(var_list=restore_var)
-    load_step = int(os.path.basename(ckpt.model_checkpoint_path).split('-')[1])
-
-    loader.restore(sess, ckpt.model_checkpoint_path)
-else:
-    print("NO MODEL")
-
-t = 0.
-for _ in range(100):
-    start_time = time.time()
-    preds2 = sess.run(my_pred, feed_dict={net_obj.is_training:False})
-    t += time.time() - start_time
-
-print(t / 100.)
-
-
-misc.imsave('test1.png', preds2[0])
-"""

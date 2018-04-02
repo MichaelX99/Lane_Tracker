@@ -36,7 +36,7 @@ def Load_Cityscapes_Model(path):
     with tf.Session(graph=Cityscapes_Graph) as sess:
         temp = tf.placeholder(tf.float32, [None, None, None, 3])
 
-        net_obj = PSPNet(num_classes=19)
+        net_obj = PSPNet()
         conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv = net_obj.inference(temp, lane=False)
 
         init = tf.global_variables_initializer()
@@ -68,30 +68,6 @@ def Load_Cityscapes_Model(path):
 
     return model_vars
 
-def compute_image_mean(data_dir):
-    img_paths = glob(data_dir + "image_2/*.png")
-
-    if len(img_paths) != 0:
-        r_sum = 0.
-        g_sum = 0.
-        b_sum = 0.
-
-        for path in img_paths:
-            img = misc.imread(path)
-            r_sum += np.sum(img[:,:,0])
-            g_sum += np.sum(img[:,:,1])
-            b_sum += np.sum(img[:,:,2])
-
-        r_sum /= len(img_paths)
-        g_sum /= len(img_paths)
-        b_sum /= len(img_paths)
-
-        return np.array((r_sum, g_sum, b_sum), dtype=np.float32)
-
-    else:
-        return np.array((1,1,1), dtype=np.float32)
-
-
 def Train_KITTI(model_vars):
     KITTI_Graph = tf.Graph()
     with KITTI_Graph.as_default():
@@ -99,8 +75,7 @@ def Train_KITTI(model_vars):
         tf.set_random_seed(RANDOM_SEED)
         coord = tf.train.Coordinator()
 
-        img_mean = compute_image_mean(DATA_DIRECTORY)
-
+        img_mean = IMG_MEAN
 
         with tf.name_scope("create_inputs"):
             reader = ImageReader(
@@ -115,7 +90,7 @@ def Train_KITTI(model_vars):
             image_batch, label_batch = reader.dequeue(BATCH_SIZE)
 
 
-        net_obj = PSPNet(num_classes = 2, decay=WEIGHT_DECAY)
+        net_obj = PSPNet(decay=WEIGHT_DECAY)
         conv7, conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv = net_obj.inference(image_batch)
 
         conv7 = tf.identity(conv7, "lane_segmentation")
@@ -131,10 +106,8 @@ def Train_KITTI(model_vars):
 
         # Pixel-wise softmax loss.
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=prediction, labels=gt)
-        #l2_losses = [WEIGHT_DECAY * tf.nn.l2_loss(v) for v in tf.trainable_variables() if 'weights' in v.name]
 
         regularization_loss = tf.add_n(tf.losses.get_regularization_losses())
-        #reduced_loss = tf.reduce_mean(loss) + tf.add_n(l2_losses)
         total_loss = tf.reduce_mean(loss) + regularization_loss
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -153,7 +126,6 @@ def Train_KITTI(model_vars):
         sess.run(init)
 
         for var in tf.global_variables():
-        #for var in all_trainable:
             name = var.name
             if name in model_vars:
                 #sess.run(var.assign(model_vars[name]))
@@ -164,22 +136,18 @@ def Train_KITTI(model_vars):
         print("Finished Restoring Model Variables")
 
         checkpoint_path = SNAPSHOT_DIR + "model.ckpt"
-        # Saver for storing checkpoints of the model.
         saver = tf.train.Saver(var_list=tf.global_variables(), max_to_keep=10)
 
-        # Start queue threads.
         threads = tf.train.start_queue_runners(coord=coord, sess=sess)
 
-
         count = 0.
-
         print("Starting Training")
         for i in range(NUM_STEPS):
             print(i)
             #_, loss = sess.run([train_op, total_loss], feed_dict={net_obj.is_training: True})
             #if count % 5 == 0:
             #    print("Loss: = {:.3f}".format(loss))
-            #count += 1
+            count += 1
 
         coord.request_stop()
         coord.join(threads)
@@ -190,16 +158,18 @@ def Train_KITTI(model_vars):
         KITTI_vars = {}
         for var in tf.global_variables():
             name = var.name
-            #if "weights" in name or "biases" in name or "beta" in name or "gamma" in name or "moving_mean" in name or "moving_variance" in name:
             #KITTI_vars[name] = var.eval(session=sess)
             print("Extracted " + name)
 
+        return KITTI_vars
+
+def freeze_and_optimize_graph(KITTI_vars):
     Save_Graph = tf.Graph()
     with Save_Graph.as_default():
 
         input_image = tf.placeholder(tf.float32, shape=[None, None, None, 3], name='input_image')
 
-        save_obj = PSPNet(num_classes = 2, decay=WEIGHT_DECAY, training=False)
+        save_obj = PSPNet(training=False)
         conv7, conv6, _, _, _, _, _ = save_obj.inference(input_image)
 
         conv7 = tf.identity(conv7, "lane_segmentation")
@@ -221,7 +191,7 @@ def Train_KITTI(model_vars):
 
         MODEL_NAME = 'seg'
         input_graph_path = SNAPSHOT_DIR + 'output.pb'
-        #checkpoint_path = SNAPSHOT_DIR + 'model.ckpt'
+        checkpoint_path = SNAPSHOT_DIR + "model.ckpt"
         input_saver_def_path = ""
         input_binary = True
         output_node_names = "output"
@@ -234,7 +204,7 @@ def Train_KITTI(model_vars):
                           restore_op_name, filename_tensor_name,
                           output_frozen_graph_name, clear_devices, "")
 
-
+        print("Froze graph, Now optimizing")
 
 
         frozen_graph_def = tf.GraphDef()
@@ -256,12 +226,12 @@ def Train_KITTI(model_vars):
 
 
 
-
-
 if __name__ == '__main__':
     path = './model'
 
     #model_vars = Load_Cityscapes_Model(path)
     model_vars = {}
 
-    Train_KITTI(model_vars)
+    KITTI_vars = Train_KITTI(model_vars)
+
+    freeze_and_optimize_graph(KITTI_vars)
