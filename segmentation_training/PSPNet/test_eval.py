@@ -5,6 +5,9 @@ import cv2
 
 IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
 
+# THESE LABELS ARE NOT THE OFFICIAL CITYSCAPES LABELS AND ARE INSTEAD HELLOCHICKS OWN CONVENTION
+# TODO change these back to the correct values
+# https://github.com/mcordts/cityscapesScripts/blob/master/cityscapesscripts/helpers/labels.py
 label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
                 # 0 = road, 1 = sidewalk, 2 = building
                 ,(102, 102, 156), (190, 153, 153), (153, 153, 153)
@@ -20,7 +23,7 @@ label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
                 ,(119, 10, 32)]
                 # 18 = bicycle
 
-lane_colors = [(255, 0, 0)]
+lane_colors = [(0, 255, 0), (0,0,0)]
               # 0 = lane
 
 crop_size = [720, 720]
@@ -41,37 +44,40 @@ def decode_labels(mask, img_shape, num_classes):
 
 def load_img(img_path):
     img = misc.imread(img_path)
-    #img = tf.image.decode_png(tf.read_file(img_path), channels=3)
-    #img_shape = tf.shape(img)
+    img_shape = img.shape
 
-    h, w = (np.max(crop_size[0], img_shape[0]), np.max(crop_size[1], img_shape[1]))
-
+    h = max(crop_size[0], img_shape[0])
+    w = max(crop_size[1], img_shape[1])
 
     return img, h, w
 
 def preprocess(img, h, w):
     # Convert RGB to BGR
-    #img_r, img_g, img_b = tf.split(axis=2, num_or_size_splits=3, value=img)
-    #img = tf.cast(tf.concat(axis=2, values=[img_b, img_g, img_r]), dtype=tf.float32)
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    # Extract mean.
-    img -= IMG_MEAN
 
-    #pad_img = tf.image.pad_to_bounding_box(img, 0, 0, h, w)
+    temp = np.ones(img.shape)
+    for i in range(3):
+        temp[:,:,i] = np.multiply(temp[:,:,i], IMG_MEAN[i])
+
+    # Extract mean.
+    img = np.subtract(img, temp)
+
     dh = img.shape[0] - h
     dw = img.shape[1] - w
-    if dh != 0 and dw != 0:
+
+    if dh != 0 or dw != 0:
         pad_img = np.zeros((h, w, 3))
         pad_img[:img.shape[0], :img.shape[1]] = img
+    else:
+        pad_img = img
 
 
     pad_img = [pad_img]
-    #pad_img = tf.expand_dims(pad_img, dim=0)
 
     return pad_img
 
-def inference(raw_output, img):
-    img_shape = img.shape
+def inference(raw_output, img, num_classes):
+    img_shape = img[0].shape
 
     h, w = (tf.maximum(crop_size[0], img_shape[0]), tf.maximum(crop_size[1], img_shape[1]))
 
@@ -94,10 +100,11 @@ with frozen_graph.as_default():
             tf.import_graph_def(frozen_graph_def, name='')
 
         input_img = frozen_graph.get_tensor_by_name("input_image:0")
-        pspnet_tensor = frozen_graph.get_tensor_by_name("conv6/BiasAdd:0")
-        lane_tensor = frozen_graph.get_tensor_by_name("output:0")
+        pspnet_tensor = frozen_graph.get_tensor_by_name("psp_segmentation:0")
+        lane_tensor = frozen_graph.get_tensor_by_name("lane_segmentation:0")
 
-        img_filepath = 'temp'
+        img_filepath = 'lane_input.png'
+        #img_filepath = 'input.png'
         img, h, w = load_img(img_filepath)
         pad_img = preprocess(img, h, w)
 
@@ -105,8 +112,21 @@ with frozen_graph.as_default():
         config.gpu_options.allow_growth = True
         frozen_sess = tf.Session(graph=frozen_graph, config=config)
 
-        pspnet_output, lane_output = frozen_sess.run([pspnet_tensor, lane_tensor], feed_dict={input_img: pad_img})
+        """
+        pspnet_pred, lane_pred = frozen_sess.run([pspnet_tensor, lane_tensor], feed_dict={input_img: pad_img})
 
+        print(np.allclose(pspnet_pred, lane_pred))
+        """
+
+        pspnet_output_op = inference(pspnet_tensor, pad_img, 19)
+        lane_output_op = inference(lane_tensor, pad_img, 2)
+
+        pspnet_pred, lane_pred = frozen_sess.run([pspnet_output_op, lane_output_op], feed_dict={input_img: pad_img})
+        misc.imsave("psp_test.png", pspnet_pred[0])
+        misc.imsave("lane_test.png", lane_pred[0])
+
+
+"""
 optimized_graph = tf.Graph()
 optimized_path = './KITTI_model/optimized.pb'
 
@@ -118,6 +138,21 @@ with optimized_graph.as_default():
             tf.import_graph_def(optimized_graph_def, name='')
 
 
-        input_img = frozen_graph.get_tensor_by_name("input_image:0")
-        pspnet_tensor = frozen_graph.get_tensor_by_name("conv6/BiasAdd:0")
-        lane_tensor = frozen_graph.get_tensor_by_name("output:0")
+        input_img = optimized_graph.get_tensor_by_name("input_image:0")
+        pspnet_tensor = optimized_graph.get_tensor_by_name("psp_segmentation:0")
+        lane_tensor = optimized_graph.get_tensor_by_name("lane_segmentation:0")
+
+        img, h, w = load_img(img_filepath)
+        pad_img = preprocess(img, h, w)
+
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        optimized_sess = tf.Session(graph=optimized_graph, config=config)
+
+        pspnet_output_op = inference(pspnet_tensor, pad_img, 19)
+        lane_output_op = inference(lane_tensor, pad_img, 2)
+
+        pspnet_pred, lane_pred = optimized_sess.run([pspnet_output_op, lane_output_op], feed_dict={input_img: pad_img})
+        misc.imsave("opt_psp_test.png", pspnet_pred[0])
+        misc.imsave("opt_lane_test.png", lane_pred[0])
+"""

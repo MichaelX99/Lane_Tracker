@@ -67,7 +67,7 @@ def read_labeled_image_list(data_dir, data_list):
 
     return images, masks
 
-def read_images_from_disk(input_queue, input_size, random_scale, random_mirror, ignore_label, img_mean): # optional pre-processing arguments
+def read_images_from_disk(input_queue, input_size, random_scale, random_mirror, img_mean): # optional pre-processing arguments
     img_contents = tf.read_file(input_queue[0])
     label_contents = tf.read_file(input_queue[1])
 
@@ -88,7 +88,7 @@ def read_images_from_disk(input_queue, input_size, random_scale, random_mirror, 
         if random_mirror:
             img, label = image_mirroring(img, label)
 
-        img, label = random_crop_and_pad_image_and_labels(img, label, h, w, ignore_label)
+        img, label = random_crop_and_pad_image_and_labels(img, label, h, w)
 
     return img, label
 
@@ -98,14 +98,15 @@ class ImageReader(object):
     '''
 
     def __init__(self, data_dir, input_size,
-                  random_scale, random_mirror, ignore_label, img_mean, coord):
+                  random_scale, random_mirror, img_mean, coord):
 
         self.data_dir = data_dir
 
         self.image_list = glob(data_dir + "image_2/*.png")
         self.image_list.sort()
 
-        self.label_list = glob(data_dir + "gt_image_2/*.png")
+        #self.label_list = glob(data_dir + "gt_image_2/*.png")
+        self.label_list = glob(data_dir + "ids/*.png")
         self.label_list.sort()
 
         self.input_size = input_size
@@ -116,7 +117,7 @@ class ImageReader(object):
         self.labels = tf.convert_to_tensor(self.label_list, dtype=tf.string)
         self.queue = tf.train.slice_input_producer([self.images, self.labels],
                                                    shuffle=input_size is not None) # not shuffling if it is val
-        self.image, self.label = read_images_from_disk(self.queue, self.input_size, random_scale, random_mirror, ignore_label, img_mean)
+        self.image, self.label = read_images_from_disk(self.queue, self.input_size, random_scale, random_mirror, img_mean)
 
     def dequeue(self, num_elements):
         image_batch, label_batch = tf.train.batch([self.image, self.label],

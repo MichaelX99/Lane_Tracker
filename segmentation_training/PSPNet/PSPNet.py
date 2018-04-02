@@ -6,8 +6,9 @@ from scipy import misc
 
 import time
 
-IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
 
+IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
+"""
 def preprocess(img, h, w):
     # Convert RGB to BGR
     img_r, img_g, img_b = tf.split(axis=2, num_or_size_splits=3, value=img)
@@ -19,6 +20,7 @@ def preprocess(img, h, w):
     pad_img = tf.expand_dims(pad_img, dim=0)
 
     return pad_img
+"""
 
 def prepare_label(input_batch, new_size, num_classes, one_hot=True):
     with tf.name_scope('label_encode'):
@@ -44,7 +46,7 @@ label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
                 ,(119, 10, 32)]
                 # 18 = bicycle
 
-lane_colors = [(255, 0, 0)]
+lane_colors = [(255, 0, 255)]
               # 0 = lane
 
 
@@ -341,6 +343,17 @@ class PSPNet(object):
             conv6 = slim.conv2d(conv5_4, 19, [1, 1], [1, 1], scope='conv6', trainable=False)
 
             if lane:
+                """
+                conv7_first = slim.conv2d(conv5_4, 512, [1, 1], [1, 1], scope='conv7_first', weights_regularizer=slim.l2_regularizer(self.decay))
+                conv7_first = tf.layers.batch_normalization(conv7_first, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name='conv7_first_bn')
+                conv7_first = tf.nn.relu(conv7_first)
+
+                conv7_second = slim.conv2d(conv7_first, 512, [1, 1], [1, 1], scope='conv7_second', weights_regularizer=slim.l2_regularizer(self.decay))
+                conv7_second = tf.layers.batch_normalization(conv7_second, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name='conv7_second_bn')
+                conv7_second = tf.nn.relu(conv7_second)
+
+                conv7 = slim.conv2d(conv7_second, 2, [1, 1], [1, 1], scope='conv7', weights_regularizer=slim.l2_regularizer(self.decay))
+                """
                 conv7 = slim.conv2d(conv5_4, 2, [1, 1], [1, 1], scope='conv7', weights_regularizer=slim.l2_regularizer(self.decay))
 
                 return conv7, conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
