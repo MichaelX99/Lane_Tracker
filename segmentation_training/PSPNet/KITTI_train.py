@@ -5,6 +5,7 @@ from glob import glob
 import time
 
 from PSPNet import *
+from Yellowfin import YFOptimizer
 
 from Image_Reader import ImageReader
 
@@ -30,7 +31,7 @@ def Load_Cityscapes_Model(path):
         temp = tf.placeholder(tf.float32, [None, None, None, 3])
 
         net_obj = PSPNet()
-        conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv = net_obj.inference(temp, lane=False)
+        psp_conv6 = net_obj.inference(temp, lane=False)
 
         init = tf.global_variables_initializer()
 
@@ -83,14 +84,14 @@ def Train_KITTI(model_vars):
 
 
         net_obj = PSPNet(decay=WEIGHT_DECAY)
-        conv7, conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv = net_obj.inference(image_batch)
+        lane_conv6, psp_conv6 = net_obj.inference(image_batch)
 
-        conv7 = tf.identity(conv7, "lane_segmentation")
-        conv6 = tf.identity(conv6, "psp_segmentation")
+        lane_conv6 = tf.identity(lane_conv6, "lane_segmentation")
+        psp_conv6 = tf.identity(psp_conv6, "psp_segmentation")
 
         # Predictions: ignoring all predictions with labels greater or equal than n_classes
-        raw_prediction = tf.reshape(conv7, [-1, NUM_CLASSES])
-        label_proc = tf.image.resize_nearest_neighbor(label_batch, tf.stack(conv7.get_shape()[1:3])) # as labels are integer numbers, need to use NN interp.
+        raw_prediction = tf.reshape(lane_conv6, [-1, NUM_CLASSES])
+        label_proc = tf.image.resize_nearest_neighbor(label_batch, tf.stack(lane_conv6.get_shape()[1:3])) # as labels are integer numbers, need to use NN interp.
         raw_gt = tf.reshape(label_proc, [-1])
 
         indices = tf.where(tf.less_equal(raw_gt, NUM_CLASSES - 1))
@@ -107,19 +108,22 @@ def Train_KITTI(model_vars):
 
         loss_op = temp_loss
 
+
         reg_tensors = []
         for var in tf.global_variables():
             name = var.name
-            if "conv7" in name:
+            if "weights" in name or "biases" in name or "beta" in name or "gamma" in name:
                 reg_tensors.append(tf.nn.l2_loss(var))
 
         regularization_loss = tf.add_n(reg_tensors)
 
+
         total_loss = temp_loss + (WEIGHT_DECAY * regularization_loss)
 
+        optimizer = YFOptimizer()
         #optimizer = tf.train.AdamOptimizer()
         #optimizer = tf.train.MomentumOptimizer(learning_rate=.001, momentum=.3, use_nesterov=True)
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=.0001)
+        #optimizer = tf.train.GradientDescentOptimizer(learning_rate=.0001)
 
         train_op = optimizer.minimize(total_loss)
 
@@ -131,13 +135,34 @@ def Train_KITTI(model_vars):
 
         sess.run(init)
 
+
         for var in tf.global_variables():
             name = var.name
-            if name in model_vars:
-                sess.run(var.assign(model_vars[name]))
-                print("Restored " + name)
+            if "PSP" in name:
+                name = name.replace("PSP/", "")
+                if name in model_vars:
+                    sess.run(var.assign(model_vars[name]))
+                    print("Restored " + "PSP/" + name)
+                else:
+                    print("Did Not Restore " + "PSP/" + name)
+
+            elif "Lane" in name:
+                name = name.replace("Lane/", "")
+                if "conv6" not in name:
+                    if name in model_vars:
+                        sess.run(var.assign(model_vars[name]))
+                        print("Restored " + "Lane/" + name)
+                    else:
+                        print("Did Not Restore " + "Lane/" + name)
+                else:
+                    print("Did Not Restore " + "Lane/" + name)
+
             else:
-                print("Did Not Restore " + name)
+                if name in model_vars:
+                    sess.run(var.assign(model_vars[name]))
+                    print("Restored " + name)
+                else:
+                    print("Did Not Restore " + name)
 
         print("Finished Restoring Model Variables")
 
@@ -161,6 +186,7 @@ def Train_KITTI(model_vars):
         saver.save(sess, checkpoint_path)
         print("Finished Training, Extracting weights from graph")
 
+
 def freeze_and_optimize_graph():
     Save_Graph = tf.Graph()
     with Save_Graph.as_default():
@@ -168,10 +194,10 @@ def freeze_and_optimize_graph():
         input_image = tf.placeholder(tf.float32, shape=[None, None, None, 3], name='input_image')
 
         save_obj = PSPNet(training=False)
-        conv7, conv6, _, _, _, _, _ = save_obj.inference(input_image)
+        lane_conv6, psp_conv6 = save_obj.inference(input_image)
 
-        conv7 = tf.identity(conv7, "lane_segmentation")
-        conv6 = tf.identity(conv6, "psp_segmentation")
+        lane_conv6 = tf.identity(lane_conv6, "lane_segmentation")
+        psp_conv6 = tf.identity(psp_conv6, "psp_segmentation")
 
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True

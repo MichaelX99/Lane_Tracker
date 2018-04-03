@@ -5,9 +5,6 @@ import cv2
 
 IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
 
-# THESE LABELS ARE NOT THE OFFICIAL CITYSCAPES LABELS AND ARE INSTEAD HELLOCHICKS OWN CONVENTION
-# TODO change these back to the correct values
-# https://github.com/mcordts/cityscapesScripts/blob/master/cityscapesscripts/helpers/labels.py
 label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
                 # 0 = road, 1 = sidewalk, 2 = building
                 ,(102, 102, 156), (190, 153, 153), (153, 153, 153)
@@ -103,7 +100,8 @@ with frozen_graph.as_default():
         pspnet_tensor = frozen_graph.get_tensor_by_name("psp_segmentation:0")
         lane_tensor = frozen_graph.get_tensor_by_name("lane_segmentation:0")
 
-        img_filepath = 'lane_input.png'
+        img_filepath = 'lane_input1.png'
+        #img_filepath = 'lane_input.png'
         #img_filepath = 'input.png'
         img, h, w = load_img(img_filepath)
         pad_img = preprocess(img, h, w)
@@ -111,15 +109,6 @@ with frozen_graph.as_default():
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         frozen_sess = tf.Session(graph=frozen_graph, config=config)
-
-        """
-        pspnet_pred, lane_pred = frozen_sess.run([pspnet_tensor, lane_tensor], feed_dict={input_img: pad_img})
-
-        for i in lane_pred:
-            for j in i:
-                print j
-        """
-
 
         pspnet_output_op = inference(pspnet_tensor, pad_img, 19)
         lane_output_op = inference(lane_tensor, pad_img, 2)

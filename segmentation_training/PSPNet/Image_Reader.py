@@ -89,7 +89,7 @@ def read_images_from_disk(input_queue, input_size, random_scale, random_mirror, 
             img, label = image_mirroring(img, label)
 
         img, label = random_crop_and_pad_image_and_labels(img, label, h, w)
-        
+
     return img, label
 
 class ImageReader(object):
@@ -105,14 +105,12 @@ class ImageReader(object):
         self.image_list = glob(data_dir + "image_2/*.png")
         self.image_list.sort()
 
-        #self.label_list = glob(data_dir + "gt_image_2/*.png")
         self.label_list = glob(data_dir + "ids/*.png")
         self.label_list.sort()
 
         self.input_size = input_size
         self.coord = coord
 
-        #self.image_list, self.label_list = read_labeled_image_list(self.data_dir, self.data_list)
         self.images = tf.convert_to_tensor(self.image_list, dtype=tf.string)
         self.labels = tf.convert_to_tensor(self.label_list, dtype=tf.string)
         self.queue = tf.train.slice_input_producer([self.images, self.labels],

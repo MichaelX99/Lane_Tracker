@@ -8,29 +8,6 @@ import time
 
 
 IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
-"""
-def preprocess(img, h, w):
-    # Convert RGB to BGR
-    img_r, img_g, img_b = tf.split(axis=2, num_or_size_splits=3, value=img)
-    img = tf.cast(tf.concat(axis=2, values=[img_b, img_g, img_r]), dtype=tf.float32)
-    # Extract mean.
-    img -= IMG_MEAN
-
-    pad_img = tf.image.pad_to_bounding_box(img, 0, 0, h, w)
-    pad_img = tf.expand_dims(pad_img, dim=0)
-
-    return pad_img
-
-
-def prepare_label(input_batch, new_size, num_classes, one_hot=True):
-    with tf.name_scope('label_encode'):
-        input_batch = tf.image.resize_nearest_neighbor(input_batch, new_size) # as labels are integer numbers, need to use NN interp.
-        input_batch = tf.squeeze(input_batch, squeeze_dims=[3]) # reducing the channel dimension.
-        if one_hot:
-            input_batch = tf.one_hot(input_batch, depth=num_classes)
-
-    return input_batch
-"""
 
 label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
                 # 0 = road, 1 = sidewalk, 2 = building
@@ -63,17 +40,17 @@ class PSPNet(object):
         else:
             self.decay = 0.
 
-    def block(self, input, outs, sizes, strides, pad, names, rate=None):
-        conv1 = self.compound_conv(input, outs[0], sizes[0], strides[0], names[0])
+    def block(self, input, outs, sizes, strides, pad, names, rate=None, trainable=False):
+        conv1 = self.compound_conv(input, outs[0], sizes[0], strides[0], names[0], trainable=trainable)
 
         pad =  tf.pad(conv1, paddings=np.array([[0,0], [pad, pad], [pad, pad], [0, 0]]), name=names[1])
 
         if rate != None:
             conv2 = self.compound_atrous_conv(pad, outs[1], sizes[1], strides[1], rate, names[2])
         else:
-            conv2 = self.compound_conv(pad, outs[1], sizes[1], strides[1], names[2])
+            conv2 = self.compound_conv(pad, outs[1], sizes[1], strides[1], names[2], trainable=trainable)
 
-        conv3 = self.compound_conv(conv2, outs[2], sizes[2], strides[2], names[3], relu=False)
+        conv3 = self.compound_conv(conv2, outs[2], sizes[2], strides[2], names[3], relu=False, trainable=trainable)
 
         return conv3
 
@@ -93,14 +70,14 @@ class PSPNet(object):
     def get_var(self, name, shape):
         return tf.get_variable(name, shape, trainable=False)
 
-    def compound_conv(self, input, output, shape, stride, name, relu=True, padding='VALID'):
+    def compound_conv(self, input, output, shape, stride, name, relu=True, padding='VALID', trainable=False):
         with slim.arg_scope([slim.conv2d],
                              activation_fn=None,
                              padding=padding,
                              biases_initializer=None):
 
-            conv = slim.conv2d(inputs=input, num_outputs=output, kernel_size=shape, stride=stride, scope=name, trainable=False)
-            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name=name+'_bn', trainable=False)
+            conv = slim.conv2d(inputs=input, num_outputs=output, kernel_size=shape, stride=stride, scope=name, trainable=trainable)
+            conv = tf.layers.batch_normalization(conv, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name=name+'_bn', trainable=trainable)
 
 
             if relu == True:
@@ -114,7 +91,7 @@ class PSPNet(object):
 
         return add
 
-    def inference(self, input, lane=True):
+    def ResNet101(self, input):
         conv1_1_3x3_s2 = self.compound_conv(input, 64, 3, 2, 'conv1_1_3x3_s2', padding='SAME')
 
         conv1_2_3x3 = self.compound_conv(conv1_1_3x3_s2, 64, 3, 1, 'conv1_2_3x3', padding='SAME')
@@ -273,14 +250,15 @@ class PSPNet(object):
 
         conv5_1_1x1_proj = self.compound_conv(conv4_23, 2048, 1, 1, 'conv5_1_1x1_proj', relu=False)
 
-        ##################################################################
+        return conv4_23, conv5_1_1x1_proj
 
+    def Segmentation(self, conv4_23, conv5_1_1x1_proj, trainable=False, num_classes=19):
         outs = [512, 512, 2048]
         sizes = [1, 3, 1]
         strides = [1, 1, 1]
         pad = 4
         names = ['conv5_1_1x1_reduce', 'padding31', 'conv5_1_3x3', 'conv5_1_1x1_increase']
-        conv5_1_1x1_increase = self.block(conv4_23, outs, sizes, strides, pad, names, rate=4)
+        conv5_1_1x1_increase = self.block(conv4_23, outs, sizes, strides, pad, names, rate=4, trainable=trainable)
 
         ######################################################################
 
@@ -291,7 +269,7 @@ class PSPNet(object):
         strides = [1, 1, 1]
         pad = 4
         names = ['conv5_2_1x1_reduce', 'padding32', 'conv5_2_3x3', 'conv5_2_1x1_increase']
-        conv5_2_1x1_increase = self.block(conv5_1, outs, sizes, strides, pad, names, rate=4)
+        conv5_2_1x1_increase = self.block(conv5_1, outs, sizes, strides, pad, names, rate=4, trainable=trainable)
 
         ##################################################################
 
@@ -302,7 +280,7 @@ class PSPNet(object):
         strides = [1, 1, 1]
         pad = 4
         names = ['conv5_3_1x1_reduce', 'padding33', 'conv5_3_3x3', 'conv5_3_1x1_increase']
-        conv5_3_1x1_increase = self.block(conv5_2, outs, sizes, strides, pad, names, rate=4)
+        conv5_3_1x1_increase = self.block(conv5_2, outs, sizes, strides, pad, names, rate=4, trainable=trainable)
 
         ##################################################################
 
@@ -310,55 +288,55 @@ class PSPNet(object):
         shape = tf.shape(conv5_3)[1:3]
 
         conv5_3_pool1 = tf.nn.avg_pool(conv5_3, ksize=[1,90,90,1], strides=[1,90,90,1], padding='VALID', name='conv5_3_pool1')
-        conv5_3_pool1_conv = self.compound_conv(conv5_3_pool1, 512, 1, 1, 'conv5_3_pool1_conv')
+        conv5_3_pool1_conv = self.compound_conv(conv5_3_pool1, 512, 1, 1, 'conv5_3_pool1_conv', trainable=trainable)
         conv5_3_pool1_interp = tf.image.resize_bilinear(conv5_3_pool1_conv, size=shape, align_corners=True, name='conv5_3_pool1_interp')
 
         ######################################################################
 
         conv5_3_pool2 = tf.nn.avg_pool(conv5_3, ksize=[1,45,45,1], strides=[1,45,45,1], padding='VALID', name='conv5_3_pool2')
-        conv5_3_pool2_conv = self.compound_conv(conv5_3_pool2, 512, 1, 1, 'conv5_3_pool2_conv')
+        conv5_3_pool2_conv = self.compound_conv(conv5_3_pool2, 512, 1, 1, 'conv5_3_pool2_conv', trainable=trainable)
         conv5_3_pool2_interp = tf.image.resize_bilinear(conv5_3_pool2_conv, size=shape, align_corners=True, name='conv5_3_pool2_interp')
 
         ################################################################
 
         conv5_3_pool3 = tf.nn.avg_pool(conv5_3, ksize=[1,30,30,1], strides=[1,30,30,1], padding='VALID', name='conv5_3_pool3')
-        conv5_3_pool3_conv = self.compound_conv(conv5_3_pool3, 512, 1, 1, 'conv5_3_pool3_conv')
+        conv5_3_pool3_conv = self.compound_conv(conv5_3_pool3, 512, 1, 1, 'conv5_3_pool3_conv', trainable=trainable)
         conv5_3_pool3_interp = tf.image.resize_bilinear(conv5_3_pool3_conv, size=shape, align_corners=True, name='conv5_3_pool3_interp')
 
         ######################################################################
 
         conv5_3_pool6 = tf.nn.avg_pool(conv5_3, ksize=[1,15,15,1], strides=[1,15,15,1], padding='VALID', name='conv5_3_pool6')
-        conv5_3_pool6_conv = self.compound_conv(conv5_3_pool6, 512, 1, 1, 'conv5_3_pool6_conv')
+        conv5_3_pool6_conv = self.compound_conv(conv5_3_pool6, 512, 1, 1, 'conv5_3_pool6_conv', trainable=trainable)
         conv5_3_pool6_interp = tf.image.resize_bilinear(conv5_3_pool6_conv, size=shape, align_corners=True, name='conv5_3_pool6_interp')
 
         ######################################################################
 
         conv5_3_concat = tf.concat(axis=-1, values=[conv5_3, conv5_3_pool6_interp, conv5_3_pool3_interp, conv5_3_pool2_interp, conv5_3_pool1_interp], name='conv5_3_concat')
 
-        conv5_4 = self.compound_conv(conv5_3_concat, 512, 3, 1, 'conv5_4', padding='SAME')
+        conv5_4 = self.compound_conv(conv5_3_concat, 512, 3, 1, 'conv5_4', padding='SAME', trainable=trainable)
 
         with slim.arg_scope([slim.conv2d],
                              activation_fn=None,
                              padding='VALID'):
 
-            conv6 = slim.conv2d(conv5_4, 19, [1, 1], [1, 1], scope='conv6', trainable=False)
+            conv6 = slim.conv2d(conv5_4, num_classes, [1, 1], [1, 1], scope='conv6', trainable=trainable)
 
-            if lane:
+        return conv6
 
-                conv7_first = slim.conv2d(conv5_3_concat, 512, [1, 1], [1, 1], scope='conv7_first', weights_regularizer=slim.l2_regularizer(self.decay))
-                conv7_first = tf.layers.batch_normalization(conv7_first, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name='conv7_first_bn')
-                conv7_first = tf.nn.relu(conv7_first)
+    def inference(self, input, lane=True):
 
-                conv7_second = slim.conv2d(conv7_first, 512, [1, 1], [1, 1], scope='conv7_second', weights_regularizer=slim.l2_regularizer(self.decay))
-                conv7_second = tf.layers.batch_normalization(conv7_second, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name='conv7_second_bn')
-                conv7_second = tf.nn.relu(conv7_second)
+        conv4_23, conv5_1_1x1_proj = self.ResNet101(input)
 
-                conv7 = slim.conv2d(conv7_second, 2, [1, 1], [1, 1], scope='conv7', weights_regularizer=slim.l2_regularizer(self.decay))
-                """
-                conv7 = slim.conv2d(conv5_4, 2, [1, 1], [1, 1], scope='conv7', weights_regularizer=slim.l2_regularizer(self.decay))
-                """
+        if lane:
+            with tf.variable_scope("PSP"):
+                psp_conv6 = self.Segmentation(conv4_23, conv5_1_1x1_proj)
 
-                return conv7, conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
+            with tf.variable_scope("Lane"):
+                lane_conv6 = self.Segmentation(conv4_23, conv5_1_1x1_proj, trainable=True, num_classes=2)
 
-            else:
-                return conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
+            return lane_conv6, psp_conv6
+
+        else:
+            psp_conv6 = self.Segmentation(conv4_23, conv5_1_1x1_proj)
+
+            return psp_conv6
