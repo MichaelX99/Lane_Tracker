@@ -5,7 +5,6 @@ from glob import glob
 import time
 
 from PSPNet import *
-#from helper import *
 
 from Image_Reader import ImageReader
 
@@ -13,7 +12,7 @@ from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
 
 EPOCHS = 15
-BATCH_SIZE = 2
+BATCH_SIZE = 3
 NUM_STEPS = int(EPOCHS  * 94. // BATCH_SIZE)
 DATA_DIRECTORY = "../data_road/training/"
 INPUT_SIZE = (713,713)
@@ -91,55 +90,22 @@ def Train_KITTI(model_vars):
 
         # Predictions: ignoring all predictions with labels greater or equal than n_classes
         raw_prediction = tf.reshape(conv7, [-1, NUM_CLASSES])
-        label_proc = prepare_label(label_batch, tf.stack(conv7.get_shape()[1:3]), num_classes=NUM_CLASSES, one_hot=False) # [batch_size, h, w]
-        raw_gt = tf.reshape(label_proc, [-1,])
-        indices = tf.squeeze(tf.where(tf.less_equal(raw_gt, NUM_CLASSES - 1)), 1)
-        gt = tf.cast(tf.gather(raw_gt, indices), tf.int32)
-        #if NUM_CLASSES == 1:
-        #    gt = tf.reshape(gt, [-1, NUM_CLASSES])
+        label_proc = tf.image.resize_nearest_neighbor(label_batch, tf.stack(conv7.get_shape()[1:3])) # as labels are integer numbers, need to use NN interp.
+        raw_gt = tf.reshape(label_proc, [-1])
 
-        prediction = tf.gather(raw_prediction, indices)
+        indices = tf.where(tf.less_equal(raw_gt, NUM_CLASSES - 1))
+        raw_prediction = tf.gather(raw_prediction, indices)
+        raw_gt = tf.gather(raw_gt, indices)
 
-        # Pixel-wise softmax loss.
-        #loss = tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=gt)
-        #loss = tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=gt)
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=prediction, labels=gt)
+        raw_prediction = tf.reshape(raw_prediction, [-1, NUM_CLASSES])
+        raw_gt = tf.reshape(raw_gt, [-1])
 
 
-        my_label = tf.image.resize_nearest_neighbor(label_batch, tf.stack(conv7.get_shape()[1:3]))
-        #hot = tf.one_hot(my_label, NUM_CLASSES)
+        raw_gt = tf.cast(raw_gt, tf.int32)
+        temp_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=raw_prediction, labels=raw_gt)
+        temp_loss = tf.reduce_mean(temp_loss)
 
-        my_pred = tf.reshape(conv7, [-1, NUM_CLASSES])
-        my_label = tf.reshape(my_label, [-1])
-        hot = tf.one_hot(my_label, NUM_CLASSES)
-
-
-        #loss1 = tf.nn.softmax_cross_entropy_with_logits(logits=conv7, labels=hot)
-        loss1 = tf.nn.softmax_cross_entropy_with_logits(logits=my_pred, labels=hot)
-
-        lane_indices = tf.where(tf.equal(my_label, 0))
-        other_indices = tf.where(tf.equal(my_label, 1))
-
-        lane_pred = tf.gather(my_pred, lane_indices)
-        lane_label = tf.gather(my_label, lane_indices)
-        hot_lane = tf.one_hot(lane_label, NUM_CLASSES)
-
-        other_pred = tf.gather(my_pred, other_indices)
-        other_label = tf.gather(my_label, other_indices)
-        hot_other = tf.one_hot(other_label, NUM_CLASSES)
-
-        lane_loss = tf.nn.softmax_cross_entropy_with_logits(logits=lane_pred, labels=hot_lane)
-        lane_loss = tf.reduce_mean(lane_loss)
-
-        other_loss = tf.nn.softmax_cross_entropy_with_logits(logits=other_pred, labels=hot_other)
-        other_loss = tf.reduce_mean(other_loss)
-
-        #weighting = tf.divide( other_indices.get_shape(), (my_label.get_shape()) )
-
-        weighted_loss = lane_loss + .35 * other_loss
-
-        #loss_op = tf.reduce_mean(loss1)
-        loss_op = weighted_loss
+        loss_op = temp_loss
 
         reg_tensors = []
         for var in tf.global_variables():
@@ -147,14 +113,14 @@ def Train_KITTI(model_vars):
             if "conv7" in name:
                 reg_tensors.append(tf.nn.l2_loss(var))
 
-        #regularization_loss = tf.add_n(tf.losses.get_regularization_losses())
         regularization_loss = tf.add_n(reg_tensors)
 
+        total_loss = temp_loss + (WEIGHT_DECAY * regularization_loss)
 
-        #total_loss = tf.reduce_mean(loss) + regularization_loss
-        #total_loss = tf.reduce_mean(loss1) + regularization_loss
-        total_loss = weighted_loss + regularization_loss
-        optimizer = tf.train.AdamOptimizer()
+        #optimizer = tf.train.AdamOptimizer()
+        #optimizer = tf.train.MomentumOptimizer(learning_rate=.001, momentum=.3, use_nesterov=True)
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate=.0001)
+
         train_op = optimizer.minimize(total_loss)
 
         init = tf.global_variables_initializer()
@@ -184,35 +150,6 @@ def Train_KITTI(model_vars):
         count = 0.
         print("Starting Training")
         for i in range(NUM_STEPS):
-        #for i in range(1):
-            """
-            x, img, label, ind, lo, pred, lab = sess.run([total_loss, raw_prediction, raw_gt, indices, loss, prediction, gt], feed_dict={net_obj.is_training: True})
-            lane_count = 0
-            other = 0
-            for j in label:
-                if j == 0:
-                    lane_count += 1
-                else:
-                    other += 1
-            print(lane_count)
-            print(other)
-            print("\n\n\n")
-
-            #for j in ind:
-            #    print(j)
-            print(x)
-
-            for j, k, l in zip(pred, lab, lo):
-                print("pred = " + str(j) + ", label = " + str(k) + "; loss = " + str(l))
-
-
-            #for i in ind:
-            #    print(i)
-
-            #print("\n\n")
-            #print(l)
-            """
-            #_, loss = sess.run([train_op, total_loss], feed_dict={net_obj.is_training: True})
             _, loss = sess.run([train_op, loss_op], feed_dict={net_obj.is_training: True})
             if count % 5 == 0:
                 print("Loss: = {:.3f}".format(loss))
@@ -224,18 +161,7 @@ def Train_KITTI(model_vars):
         saver.save(sess, checkpoint_path)
         print("Finished Training, Extracting weights from graph")
 
-        """
-        KITTI_vars = {}
-        for var in tf.global_variables():
-            name = var.name
-            KITTI_vars[name] = var.eval(session=sess)
-            print("Extracted " + name)
-
-        return KITTI_vars
-        """
-        return 0
-
-def freeze_and_optimize_graph(KITTI_vars):
+def freeze_and_optimize_graph():
     Save_Graph = tf.Graph()
     with Save_Graph.as_default():
 
@@ -250,14 +176,6 @@ def freeze_and_optimize_graph(KITTI_vars):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         save_sess = tf.Session(graph=Save_Graph, config=config)
-
-        """
-        for var in tf.global_variables():
-            name = var.name
-            if name in KITTI_vars:
-                print("Assigning " + name)
-                save_sess.run(var.assign(KITTI_vars[name]))
-        """
 
 
         tf.train.write_graph(save_sess.graph_def, SNAPSHOT_DIR, 'output.pb', False)
@@ -278,9 +196,8 @@ def freeze_and_optimize_graph(KITTI_vars):
                           restore_op_name, filename_tensor_name,
                           output_frozen_graph_name, clear_devices, "")
 
-
+        """
         print("Froze graph, Now optimizing")
-
 
         frozen_graph_def = tf.GraphDef()
         with tf.gfile.Open(output_frozen_graph_name, "rb") as f:
@@ -297,7 +214,7 @@ def freeze_and_optimize_graph(KITTI_vars):
         output_optimized_graph_name = SNAPSHOT_DIR + 'optimized.pb'
         f = tf.gfile.FastGFile(output_optimized_graph_name, "wb")
         f.write(optimized_graph_def.SerializeToString())
-
+        """
 
 
 
@@ -307,7 +224,6 @@ if __name__ == '__main__':
     model_vars = Load_Cityscapes_Model(path)
     #model_vars = {}
 
-    KITTI_vars = Train_KITTI(model_vars)
-    #KITTI_vars = {}
+    Train_KITTI(model_vars)
 
-    freeze_and_optimize_graph(KITTI_vars)
+    freeze_and_optimize_graph()

@@ -89,7 +89,7 @@ def read_images_from_disk(input_queue, input_size, random_scale, random_mirror, 
             img, label = image_mirroring(img, label)
 
         img, label = random_crop_and_pad_image_and_labels(img, label, h, w)
-
+        
     return img, label
 
 class ImageReader(object):

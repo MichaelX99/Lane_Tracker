@@ -20,7 +20,7 @@ def preprocess(img, h, w):
     pad_img = tf.expand_dims(pad_img, dim=0)
 
     return pad_img
-"""
+
 
 def prepare_label(input_batch, new_size, num_classes, one_hot=True):
     with tf.name_scope('label_encode'):
@@ -30,6 +30,7 @@ def prepare_label(input_batch, new_size, num_classes, one_hot=True):
             input_batch = tf.one_hot(input_batch, depth=num_classes)
 
     return input_batch
+"""
 
 label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
                 # 0 = road, 1 = sidewalk, 2 = building
@@ -343,8 +344,8 @@ class PSPNet(object):
             conv6 = slim.conv2d(conv5_4, 19, [1, 1], [1, 1], scope='conv6', trainable=False)
 
             if lane:
-                """
-                conv7_first = slim.conv2d(conv5_4, 512, [1, 1], [1, 1], scope='conv7_first', weights_regularizer=slim.l2_regularizer(self.decay))
+
+                conv7_first = slim.conv2d(conv5_3_concat, 512, [1, 1], [1, 1], scope='conv7_first', weights_regularizer=slim.l2_regularizer(self.decay))
                 conv7_first = tf.layers.batch_normalization(conv7_first, momentum=.95, epsilon=1e-5, fused=True, training=self.is_training, name='conv7_first_bn')
                 conv7_first = tf.nn.relu(conv7_first)
 
@@ -355,6 +356,7 @@ class PSPNet(object):
                 conv7 = slim.conv2d(conv7_second, 2, [1, 1], [1, 1], scope='conv7', weights_regularizer=slim.l2_regularizer(self.decay))
                 """
                 conv7 = slim.conv2d(conv5_4, 2, [1, 1], [1, 1], scope='conv7', weights_regularizer=slim.l2_regularizer(self.decay))
+                """
 
                 return conv7, conv6, conv5_4, conv5_3_pool6_conv, conv5_3_pool3_conv, conv5_3_pool2_conv, conv5_3_pool1_conv
 

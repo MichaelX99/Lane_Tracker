@@ -115,8 +115,11 @@ with frozen_graph.as_default():
         """
         pspnet_pred, lane_pred = frozen_sess.run([pspnet_tensor, lane_tensor], feed_dict={input_img: pad_img})
 
-        print(np.allclose(pspnet_pred, lane_pred))
+        for i in lane_pred:
+            for j in i:
+                print j
         """
+
 
         pspnet_output_op = inference(pspnet_tensor, pad_img, 19)
         lane_output_op = inference(lane_tensor, pad_img, 2)
