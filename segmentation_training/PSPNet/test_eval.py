@@ -3,6 +3,8 @@ import numpy as np
 from scipy import misc
 import cv2
 
+import time
+
 IMG_MEAN = np.array((103.939, 116.779, 123.68), dtype=np.float32)
 
 label_colours = [(128, 64, 128), (244, 35, 231), (69, 69, 69)
@@ -86,65 +88,75 @@ def inference(raw_output, img, num_classes):
 
     return pred
 
-frozen_graph = tf.Graph()
-frozen_path = './KITTI_model/frozen.pb'
+if __name__ == "__main__":
 
-with frozen_graph.as_default():
-        frozen_graph_def = tf.GraphDef()
-        with tf.gfile.GFile(frozen_path, 'rb') as fid:
-            frozen_serialized_graph = fid.read()
-            frozen_graph_def.ParseFromString(frozen_serialized_graph)
-            tf.import_graph_def(frozen_graph_def, name='')
+    frozen_graph = tf.Graph()
+    frozen_path = './KITTI_model/frozen.pb'
 
-        input_img = frozen_graph.get_tensor_by_name("input_image:0")
-        pspnet_tensor = frozen_graph.get_tensor_by_name("psp_segmentation:0")
-        lane_tensor = frozen_graph.get_tensor_by_name("lane_segmentation:0")
+    with frozen_graph.as_default():
+            frozen_graph_def = tf.GraphDef()
+            with tf.gfile.GFile(frozen_path, 'rb') as fid:
+                frozen_serialized_graph = fid.read()
+                frozen_graph_def.ParseFromString(frozen_serialized_graph)
+                tf.import_graph_def(frozen_graph_def, name='')
 
-        img_filepath = 'lane_input1.png'
-        #img_filepath = 'lane_input.png'
-        #img_filepath = 'input.png'
-        img, h, w = load_img(img_filepath)
-        pad_img = preprocess(img, h, w)
+            input_img = frozen_graph.get_tensor_by_name("input_image:0")
+            pspnet_tensor = frozen_graph.get_tensor_by_name("psp_segmentation:0")
+            lane_tensor = frozen_graph.get_tensor_by_name("lane_segmentation:0")
 
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        frozen_sess = tf.Session(graph=frozen_graph, config=config)
+            #img_filepath = 'lane_input1.png'
+            img_filepath = 'lane_input.png'
+            #img_filepath = 'input.png'
+            img, h, w = load_img(img_filepath)
+            pad_img = preprocess(img, h, w)
 
-        pspnet_output_op = inference(pspnet_tensor, pad_img, 19)
-        lane_output_op = inference(lane_tensor, pad_img, 2)
+            config = tf.ConfigProto()
+            config.gpu_options.allow_growth = True
+            frozen_sess = tf.Session(graph=frozen_graph, config=config)
 
-        pspnet_pred, lane_pred = frozen_sess.run([pspnet_output_op, lane_output_op], feed_dict={input_img: pad_img})
-        misc.imsave("psp_test.png", pspnet_pred[0])
-        misc.imsave("lane_test.png", lane_pred[0])
+            pspnet_output_op = inference(pspnet_tensor, pad_img, 19)
+            lane_output_op = inference(lane_tensor, pad_img, 2)
 
-
-"""
-optimized_graph = tf.Graph()
-optimized_path = './KITTI_model/optimized.pb'
-
-with optimized_graph.as_default():
-        optimized_graph_def = tf.GraphDef()
-        with tf.gfile.GFile(optimized_path, 'rb') as fid:
-            optimized_serialized_graph = fid.read()
-            optimized_graph_def.ParseFromString(optimized_serialized_graph)
-            tf.import_graph_def(optimized_graph_def, name='')
+            t1 = time.time()
+            for _ in range(1):
+                pspnet_pred, lane_pred = frozen_sess.run([pspnet_output_op, lane_output_op], feed_dict={input_img: pad_img})
+            t2 = time.time()
+            print((t2-t1) / 100.)
+            misc.imsave("psp_test.png", pspnet_pred[0])
+            misc.imsave("lane_test.png", lane_pred[0])
 
 
-        input_img = optimized_graph.get_tensor_by_name("input_image:0")
-        pspnet_tensor = optimized_graph.get_tensor_by_name("psp_segmentation:0")
-        lane_tensor = optimized_graph.get_tensor_by_name("lane_segmentation:0")
 
-        img, h, w = load_img(img_filepath)
-        pad_img = preprocess(img, h, w)
+    optimized_graph = tf.Graph()
+    optimized_path = './KITTI_model/optimized.pb'
 
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        optimized_sess = tf.Session(graph=optimized_graph, config=config)
+    with optimized_graph.as_default():
+            optimized_graph_def = tf.GraphDef()
+            with tf.gfile.GFile(optimized_path, 'rb') as fid:
+                optimized_serialized_graph = fid.read()
+                optimized_graph_def.ParseFromString(optimized_serialized_graph)
+                tf.import_graph_def(optimized_graph_def, name='')
 
-        pspnet_output_op = inference(pspnet_tensor, pad_img, 19)
-        lane_output_op = inference(lane_tensor, pad_img, 2)
 
-        pspnet_pred, lane_pred = optimized_sess.run([pspnet_output_op, lane_output_op], feed_dict={input_img: pad_img})
-        misc.imsave("opt_psp_test.png", pspnet_pred[0])
-        misc.imsave("opt_lane_test.png", lane_pred[0])
-"""
+            input_img = optimized_graph.get_tensor_by_name("input_image:0")
+            pspnet_tensor = optimized_graph.get_tensor_by_name("psp_segmentation:0")
+            lane_tensor = optimized_graph.get_tensor_by_name("lane_segmentation:0")
+
+            img, h, w = load_img(img_filepath)
+            pad_img = preprocess(img, h, w)
+
+            config = tf.ConfigProto()
+            config.gpu_options.allow_growth = True
+            optimized_sess = tf.Session(graph=optimized_graph, config=config)
+
+            pspnet_output_op = inference(pspnet_tensor, pad_img, 19)
+            lane_output_op = inference(lane_tensor, pad_img, 2)
+
+            t1 = time.time()
+            for _ in range(1):
+                pspnet_pred, lane_pred = optimized_sess.run([pspnet_output_op, lane_output_op], feed_dict={input_img: pad_img})
+            t2 = time.time()
+            print((t2-t1) / 100.)
+
+            misc.imsave("opt_psp_test.png", pspnet_pred[0])
+            misc.imsave("opt_lane_test.png", lane_pred[0])

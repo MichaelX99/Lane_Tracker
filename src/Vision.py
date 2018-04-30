@@ -16,6 +16,7 @@ class Detector(object):
     def __init__(self):
         rospy.init_node('Lane_Detector')
 
+        """
         self.num_states = rospy.get_param("num_states")
         self.num_particles = rospy.get_param("num_particles")
         self.state_path = rospy.get_param("state_path")
@@ -34,10 +35,11 @@ class Detector(object):
         if model_path is not None:
             self.Load_Segmentation_Model(model_path)
         self.sess = tf.Session(graph=self.segmentation_graph)
+        """
 
         self.bridge = CvBridge()
-        sub = rospy.Subscriber('/roadway/image', Image, self.Compute_Evidence)
-        self.pub = rospy.Publisher('/roadway/observed_state', Float32, queue_size=1)
+        sub = rospy.Subscriber('/lane/image', Image, self.Compute_Evidence)
+        self.pub = rospy.Publisher('/lane/observed_state', Float32, queue_size=1)
 
         rospy.spin()
 

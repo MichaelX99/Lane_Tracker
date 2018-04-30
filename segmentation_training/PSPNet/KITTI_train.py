@@ -186,8 +186,19 @@ def Train_KITTI(model_vars):
         saver.save(sess, checkpoint_path)
         print("Finished Training, Extracting weights from graph")
 
+        KITTI_vars = {}
 
-def freeze_and_optimize_graph():
+        for var in tf.global_variables():
+            name = var.name
+            if "weights" in name or "biases" in name or "gamma" in name or "beta" in name or "moving_mean" in name or "moving_variance" in name:
+                print("Retreived " + var.name)
+                tensor = KITTI_Graph.get_tensor_by_name(name)
+                KITTI_vars[name] = tensor.eval(session=sess)
+
+        return KITTI_vars
+
+
+def freeze_and_optimize_graph(KITTI_vars):
     Save_Graph = tf.Graph()
     with Save_Graph.as_default():
 
@@ -202,6 +213,12 @@ def freeze_and_optimize_graph():
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         save_sess = tf.Session(graph=Save_Graph, config=config)
+
+        for var in tf.global_variables():
+            name = var.name
+            if name in KITTI_vars:
+                save_sess.run(var.assign(KITTI_vars[name]))
+                print("Restored " + name)
 
 
         tf.train.write_graph(save_sess.graph_def, SNAPSHOT_DIR, 'output.pb', False)
@@ -222,7 +239,7 @@ def freeze_and_optimize_graph():
                           restore_op_name, filename_tensor_name,
                           output_frozen_graph_name, clear_devices, "")
 
-        """
+
         print("Froze graph, Now optimizing")
 
         frozen_graph_def = tf.GraphDef()
@@ -240,7 +257,7 @@ def freeze_and_optimize_graph():
         output_optimized_graph_name = SNAPSHOT_DIR + 'optimized.pb'
         f = tf.gfile.FastGFile(output_optimized_graph_name, "wb")
         f.write(optimized_graph_def.SerializeToString())
-        """
+
 
 
 
@@ -250,6 +267,6 @@ if __name__ == '__main__':
     model_vars = Load_Cityscapes_Model(path)
     #model_vars = {}
 
-    Train_KITTI(model_vars)
+    KITTI_vars = Train_KITTI(model_vars)
 
-    freeze_and_optimize_graph()
+    freeze_and_optimize_graph(KITTI_vars)

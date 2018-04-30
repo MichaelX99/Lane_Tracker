@@ -24,6 +24,7 @@ Particle_Filter::Particle_Filter()
 
   _d_particle_matrix = cuda_initialize_particles(_handle, _d_particle_matrix, _d_particle_ones, _d_row_sum, _num_states, _num_particles);
 
+  /*
   load_transition_matrix();
   load_state_vector();
 
@@ -32,7 +33,7 @@ Particle_Filter::Particle_Filter()
   print_matrix("particle matrix", _d_particle_matrix, _num_particles, _num_states);
 
   int index = cuda_compute_argmax_state(_handle, _d_particle_matrix, _d_avg_particle, _d_particle_ones, _d_state_sum, _d_state_ones, _d_col_sum, _num_states, _num_particles);
-
+  */
 
 }
 
