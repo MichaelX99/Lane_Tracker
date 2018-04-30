@@ -1,6 +1,13 @@
 <?xml version="1.0"?>
 <launch>
 
-    <node pkg="lane_tracker" type="Tracker.py" name="lane_tracker" output="screen" cwd="node"/>
+    <node pkg="lane_tracker" type="Vision.py" name="vision_system_node" output="screen" cwd="node"/>
+    <param name="segmentation_model_path" value="$(find lane_tracker)/models/frozen.pb" />
+
+    <node pkg="lane_tracker" type="lane_tracker" name="lane_tracker_node" output="screen"/>
+    <param name="state_path" value="$(find lane_tracker)/models/state_list.txt" />
+    <param name="transition_path" value="$(find lane_tracker)/models/transform_matrix.txt" />
+    <param name="num_states" type="int" value="3" />
+    <param name="num_particles" type="int" value="2" />
 
 </launch>

@@ -4,8 +4,9 @@ from std_msgs.msg import Float32
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import numpy as np
-from Particle_Class import Particle
 #from Vision_System import Vision_System
+import os
+import time
 
 class Tracker(object):
     """
@@ -31,11 +32,25 @@ class Tracker(object):
         self.Initialize_Sensor_Model()
         self.Current_State = np.zeros(n_states)
 
-        self.particles = []
-        for _ in range(n_particles):
-            self.particles.append(Particle(n_states))
+        print("Done Initializing")
 
-        self.Compute_Current_State()
+        self.matrix_particles = np.random.rand(n_particles, n_states)
+        self.Normalize_Particles()
+
+        start_time = time.time()
+        n = 5
+        for _  in range(n):
+            t = time.time()
+            self.matrix_particles = np.dot(self.matrix_particles, self.Transition_Model)
+            self.Normalize_Particles()
+            print(time.time() - t)
+        print("-------------------")
+
+        dt = time.time() - start_time
+        dt /= n
+        print("--- %s seconds ---" % dt)
+        #self.Compute_Current_State()
+        #print(self.Current_State)
 
         if path is not None:
             self.vision_system = Vision_System(path)
@@ -81,12 +96,16 @@ class Tracker(object):
 
     def Compute_Current_State(self):
         Current_State = np.zeros(n_states)
-        for particle in self.particles:
-            Current_State = np.add(Current_State, particle.Current_State)
+        for i in range(len(self.matrix_particles)):
+            Current_State = np.add(Current_State, self.matrix_particles[i,:])
 
         s = np.sum(Current_State)
         self.Current_State = Current_State  /s
 
+    def Normalize_Particles(self):
+        for i in range(len(self.matrix_particles)):
+            s = np.sum(self.matrix_particles[i,:])
+            self.matrix_particles[i,:] /= s
 
     def Compute_Sensor_Model(self, Observed_State):
         """
@@ -98,7 +117,7 @@ class Tracker(object):
 
         return Sensor_Model
 
-    def norm(self, x, m, s=.5):
+    def norm(self, x, m, s=10):
         """
         Input: Point to determine the Gaussian probability density, the mean, the standard deviation
         Output: The Gaussian probability density
@@ -123,6 +142,14 @@ class Tracker(object):
         Output: N/A
         Purpose: Initialize the Transition Model for the particle filter
         """
+        fpath = './transition.npy'
+        if os.path.isfile(fpath):
+            print("Loading Transition Model")
+            self.Transition_Model = np.load(fpath)
+            if np.shape(self.Transition_Model) == (self.n_states, self.n_states):
+                return
+
+        print("Creating Transition Model")
         self.Transition_Model = np.zeros((self.n_states, self.n_states))
 
         scale = int(.1 * self.n_states)
@@ -147,10 +174,11 @@ class Tracker(object):
             for j in range(self.n_states):
                 self.Transition_Model[i,j] /= s
 
+        np.save(fpath, self.Transition_Model)
 
 if __name__ == '__main__':
-    n_particles = 10
-    n_states = 100
+    n_particles = 5000
+    n_states = 3000
     path = None
     #path = "/home/mikep/CarND-Semantic-Segmentation/runs/graph_def.pb"
     try:
